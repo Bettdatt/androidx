@@ -81,9 +81,11 @@ package androidx.privacysandbox.ads.adservices.adselection {
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext10OptIn public static final class AdSelectionOutcome.Companion {
+    property @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext10OptIn public final androidx.privacysandbox.ads.adservices.adselection.AdSelectionOutcome NO_OUTCOME;
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext10OptIn public final class GetAdSelectionDataOutcome {
+    ctor public GetAdSelectionDataOutcome(long adSelectionId);
     ctor public GetAdSelectionDataOutcome(long adSelectionId, optional byte[]? adSelectionData);
     method public byte[]? getAdSelectionData();
     method public long getAdSelectionId();
@@ -96,11 +98,13 @@ package androidx.privacysandbox.ads.adservices.adselection {
     ctor public GetAdSelectionDataRequest(androidx.privacysandbox.ads.adservices.common.AdTechIdentifier seller, optional android.net.Uri? coordinatorOriginUri);
     method public android.net.Uri? getCoordinatorOriginUri();
     method public androidx.privacysandbox.ads.adservices.common.AdTechIdentifier getSeller();
-    property public final android.net.Uri? coordinatorOriginUri;
+    property @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext12OptIn public final android.net.Uri? coordinatorOriginUri;
     property public final androidx.privacysandbox.ads.adservices.common.AdTechIdentifier seller;
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext10OptIn public final class PersistAdSelectionResultRequest {
+    ctor public PersistAdSelectionResultRequest(long adSelectionId);
+    ctor public PersistAdSelectionResultRequest(long adSelectionId, optional androidx.privacysandbox.ads.adservices.common.AdTechIdentifier? seller);
     ctor public PersistAdSelectionResultRequest(long adSelectionId, optional androidx.privacysandbox.ads.adservices.common.AdTechIdentifier? seller, optional byte[]? adSelectionResult);
     method public long getAdSelectionId();
     method public byte[]? getAdSelectionResult();
@@ -111,6 +115,7 @@ package androidx.privacysandbox.ads.adservices.adselection {
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext8OptIn public final class ReportEventRequest {
+    ctor public ReportEventRequest(long adSelectionId, String eventKey, String eventData, int reportingDestinations);
     ctor public ReportEventRequest(long adSelectionId, String eventKey, String eventData, int reportingDestinations, optional android.view.InputEvent? inputEvent);
     method public long getAdSelectionId();
     method public String getEventData();
@@ -120,7 +125,7 @@ package androidx.privacysandbox.ads.adservices.adselection {
     property public final long adSelectionId;
     property public final String eventData;
     property public final String eventKey;
-    property public final android.view.InputEvent? inputEvent;
+    property @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext10OptIn public final android.view.InputEvent? inputEvent;
     property public final int reportingDestinations;
     field public static final androidx.privacysandbox.ads.adservices.adselection.ReportEventRequest.Companion Companion;
     field public static final int FLAG_REPORTING_DESTINATION_BUYER = 2; // 0x2
@@ -128,6 +133,8 @@ package androidx.privacysandbox.ads.adservices.adselection {
   }
 
   public static final class ReportEventRequest.Companion {
+    property public static final int FLAG_REPORTING_DESTINATION_BUYER;
+    property public static final int FLAG_REPORTING_DESTINATION_SELLER;
   }
 
   public final class ReportImpressionRequest {
@@ -165,6 +172,8 @@ package androidx.privacysandbox.ads.adservices.appsetid {
   }
 
   public static final class AppSetId.Companion {
+    property public static final int SCOPE_APP;
+    property public static final int SCOPE_DEVELOPER;
   }
 
   public abstract class AppSetIdManager {
@@ -255,6 +264,10 @@ package androidx.privacysandbox.ads.adservices.common {
   }
 
   public static final class FrequencyCapFilters.Companion {
+    property public static final int AD_EVENT_TYPE_CLICK;
+    property public static final int AD_EVENT_TYPE_IMPRESSION;
+    property public static final int AD_EVENT_TYPE_VIEW;
+    property public static final int AD_EVENT_TYPE_WIN;
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext8OptIn public final class KeyedFrequencyCap {
@@ -320,6 +333,10 @@ package androidx.privacysandbox.ads.adservices.customaudience {
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.Ext10OptIn public final class FetchAndJoinCustomAudienceRequest {
+    ctor public FetchAndJoinCustomAudienceRequest(android.net.Uri fetchUri);
+    ctor public FetchAndJoinCustomAudienceRequest(android.net.Uri fetchUri, optional String? name);
+    ctor public FetchAndJoinCustomAudienceRequest(android.net.Uri fetchUri, optional String? name, optional java.time.Instant? activationTime);
+    ctor public FetchAndJoinCustomAudienceRequest(android.net.Uri fetchUri, optional String? name, optional java.time.Instant? activationTime, optional java.time.Instant? expirationTime);
     ctor public FetchAndJoinCustomAudienceRequest(android.net.Uri fetchUri, optional String? name, optional java.time.Instant? activationTime, optional java.time.Instant? expirationTime, optional androidx.privacysandbox.ads.adservices.common.AdSelectionSignals? userBiddingSignals);
     method public java.time.Instant? getActivationTime();
     method public java.time.Instant? getExpirationTime();
@@ -390,6 +407,10 @@ package androidx.privacysandbox.ads.adservices.measurement {
   }
 
   public static final class DeletionRequest.Companion {
+    property public static final int DELETION_MODE_ALL;
+    property public static final int DELETION_MODE_EXCLUDE_INTERNAL_DATA;
+    property public static final int MATCH_BEHAVIOR_DELETE;
+    property public static final int MATCH_BEHAVIOR_PRESERVE;
   }
 
   public abstract class MeasurementManager {
@@ -409,6 +430,8 @@ package androidx.privacysandbox.ads.adservices.measurement {
 
   public static final class MeasurementManager.Companion {
     method public androidx.privacysandbox.ads.adservices.measurement.MeasurementManager? obtain(android.content.Context context);
+    property public static final int MEASUREMENT_API_STATE_DISABLED;
+    property public static final int MEASUREMENT_API_STATE_ENABLED;
   }
 
   @SuppressCompatibility @androidx.privacysandbox.ads.adservices.common.ExperimentalFeatures.RegisterSourceOptIn public final class SourceRegistrationRequest {
@@ -509,6 +532,7 @@ package androidx.privacysandbox.ads.adservices.topics {
   }
 
   public final class GetTopicsRequest {
+    ctor public GetTopicsRequest();
     ctor public GetTopicsRequest(optional String adsSdkName, optional boolean shouldRecordObservation);
     method public String getAdsSdkName();
     method public boolean shouldRecordObservation();

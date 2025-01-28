@@ -17,6 +17,7 @@
 package androidx.compose.ui.test.junit4
 
 import androidx.activity.ComponentActivity
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.AndroidComposeUiTestEnvironment
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -31,8 +32,11 @@ import androidx.compose.ui.test.waitUntilExactlyOneExists
 import androidx.compose.ui.test.waitUntilNodeCount
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.rules.ActivityScenarioRule
+import com.google.android.apps.common.testing.accessibility.framework.integrations.espresso.AccessibilityValidator
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.TestDispatcher
 import org.junit.rules.TestRule
 import org.junit.runner.Description
 import org.junit.runners.model.Statement
@@ -82,6 +86,11 @@ inline fun <reified A : ComponentActivity> createAndroidComposeRule():
  * with your own launcher.
  *
  * If your test doesn't require a specific Activity, use [createComposeRule] instead.
+ *
+ * @param effectContext The [CoroutineContext] used to run the composition. The context for
+ *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context. If this
+ *   context contains a [TestDispatcher] or [TestCoroutineScheduler] (in that order), it will be
+ *   used for composition and the [MainTestClock].
  */
 @ExperimentalTestApi
 inline fun <reified A : ComponentActivity> createAndroidComposeRule(
@@ -131,6 +140,12 @@ fun <A : ComponentActivity> createAndroidComposeRule(
  * with your own launcher.
  *
  * If your test doesn't require a specific Activity, use [createComposeRule] instead.
+ *
+ * @param activityClass The activity type to use in the activity scenario
+ * @param effectContext The [CoroutineContext] used to run the composition. The context for
+ *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context. If this
+ *   context contains a [TestDispatcher] or [TestCoroutineScheduler] (in that order), it will be
+ *   used for composition and the [MainTestClock].
  */
 @ExperimentalTestApi
 fun <A : ComponentActivity> createAndroidComposeRule(
@@ -179,7 +194,9 @@ fun createEmptyComposeRule(): ComposeTestRule =
  * after one or more dependencies have been injected.
  *
  * @param effectContext The [CoroutineContext] used to run the composition. The context for
- *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context.
+ *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context. If this
+ *   context contains a [TestDispatcher] or [TestCoroutineScheduler] (in that order), it will be
+ *   used for composition and the [MainTestClock].
  */
 @ExperimentalTestApi
 fun createEmptyComposeRule(
@@ -248,7 +265,9 @@ private constructor(
      *
      * @param activityRule Test rule to use to launch the Activity.
      * @param effectContext The [CoroutineContext] used to run the composition. The context for
-     *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context.
+     *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context. If this
+     *   context contains a [TestDispatcher] or [TestCoroutineScheduler] (in that order), it will be
+     *   used for composition and the [MainTestClock].
      * @param activityProvider Function to retrieve the Activity from the given [activityRule].
      */
     @ExperimentalTestApi
@@ -299,6 +318,33 @@ private constructor(
     override val mainClock: MainTestClock
         get() = composeTest.mainClock
 
+    /**
+     * The [AccessibilityValidator] that will be used to run Android accessibility checks before
+     * every action that is expected to change the UI.
+     *
+     * If no validator is set (`null`), no checks will be performed. You can either supply your own
+     * validator directly, or have one configured for you with [enableAccessibilityChecks].
+     *
+     * The default value is `null`.
+     *
+     * This requires API 34+ (Android U), and currently does not work on Robolectric.
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_withAndroidComposeTestRule_sample
+     *
+     * If you have a hybrid application with both Compose and Views, and you use both Compose Test
+     * and Espresso, then you should set up accessibility checks in both frameworks and share the
+     * configuration in the following way:
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_interopWithEspresso_withTestRule
+     */
+    @get:RequiresApi(34)
+    @set:RequiresApi(34)
+    var accessibilityValidator: AccessibilityValidator?
+        get() = composeTest.accessibilityValidator
+        set(value) {
+            composeTest.accessibilityValidator = value
+        }
+
     override fun <T> runOnUiThread(action: () -> T): T = composeTest.runOnUiThread(action)
 
     override fun <T> runOnIdle(action: () -> T): T = composeTest.runOnIdle(action)
@@ -339,6 +385,39 @@ private constructor(
 
     override fun unregisterIdlingResource(idlingResource: IdlingResource) =
         composeTest.unregisterIdlingResource(idlingResource)
+
+    /**
+     * Enables accessibility checks that will be run before every action that is expected to change
+     * the UI.
+     *
+     * This will create and set an [accessibilityValidator] if there isn't one yet, or will do
+     * nothing if an `accessibilityValidator` is already set.
+     *
+     * This requires API 34+ (Android U), and currently does not work on Robolectric.
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_withComposeTestRule_sample
+     *
+     * If you have a hybrid application with both Compose and Views, and you use both Compose Test
+     * and Espresso, then you should set up accessibility checks in both frameworks and share the
+     * configuration in the following way:
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_interopWithEspresso_withTestRule
+     * @see accessibilityValidator
+     * @see disableAccessibilityChecks
+     */
+    @RequiresApi(34)
+    override fun enableAccessibilityChecks() = composeTest.enableAccessibilityChecks()
+
+    /**
+     * Disables accessibility checks.
+     *
+     * This will set the [accessibilityValidator] back to `null`.
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_withAndroidComposeTestRule_sample
+     * @see enableAccessibilityChecks
+     */
+    @RequiresApi(34)
+    override fun disableAccessibilityChecks() = composeTest.disableAccessibilityChecks()
 
     override fun onNode(
         matcher: SemanticsMatcher,

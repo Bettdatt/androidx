@@ -26,6 +26,7 @@ import androidx.compose.ui.node.requireLayoutNode
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewConfiguration
+import androidx.compose.ui.platform.makeSynchronizedObject
 import androidx.compose.ui.platform.synchronized
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -39,6 +40,7 @@ import kotlin.coroutines.RestrictsSuspension
 import kotlin.coroutines.createCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.js.JsName
 import kotlin.math.max
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
@@ -149,6 +151,7 @@ interface PointerInputScope : Density {
      */
     @Suppress("GetterSetterNames")
     @get:Suppress("GetterSetterNames")
+    @JsName("varinterceptOutOfBoundsChildEvents")
     var interceptOutOfBoundsChildEvents: Boolean
         get() = false
         set(_) {}
@@ -459,6 +462,9 @@ sealed interface SuspendingPointerInputModifierNode : PointerInputModifierNode {
     fun resetPointerInputHandler()
 }
 
+// Used for multi-sleep solution within [PointerEventHandlerCoroutine.withTimeout()].
+internal const val WITH_TIMEOUT_MICRO_DELAY_MILLIS = 8L
+
 /**
  * Implementation notes: This class does a lot of lifting. [PointerInputModifierNode] receives,
  * interprets, and, consumes [PointerInputChange]s while the state (and the coroutineScope used to
@@ -537,10 +543,12 @@ internal class SuspendingPointerInputModifierNodeImpl(
 
     /**
      * Actively registered input handlers from currently ongoing calls to [awaitPointerEventScope].
-     * Must use `synchronized(pointerHandlers)` to access.
+     * Must use `synchronized(pointerHandlersLock)` to access.
      */
     private val pointerHandlers =
         mutableVectorOf<SuspendingPointerInputModifierNodeImpl.PointerEventHandlerCoroutine<*>>()
+
+    private val pointerHandlersLock = makeSynchronizedObject(pointerHandlers)
 
     /**
      * Scratch list for dispatching to handlers for a particular phase. Used to hold a copy of the
@@ -670,7 +678,7 @@ internal class SuspendingPointerInputModifierNodeImpl(
         block: (SuspendingPointerInputModifierNodeImpl.PointerEventHandlerCoroutine<*>) -> Unit
     ) {
         // Copy handlers to avoid mutating the collection during dispatch
-        synchronized(pointerHandlers) { dispatchingPointerHandlers.addAll(pointerHandlers) }
+        synchronized(pointerHandlersLock) { dispatchingPointerHandlers.addAll(pointerHandlers) }
         try {
             when (pass) {
                 PointerEventPass.Initial,
@@ -761,7 +769,7 @@ internal class SuspendingPointerInputModifierNodeImpl(
         block: suspend AwaitPointerEventScope.() -> R
     ): R = suspendCancellableCoroutine { continuation ->
         val handlerCoroutine = PointerEventHandlerCoroutine(continuation)
-        synchronized(pointerHandlers) {
+        synchronized(pointerHandlersLock) {
             pointerHandlers += handlerCoroutine
 
             // NOTE: We resume the new continuation while holding this lock.
@@ -835,7 +843,7 @@ internal class SuspendingPointerInputModifierNodeImpl(
 
         // Implementation of Continuation; clean up and resume our wrapped continuation.
         override fun resumeWith(result: Result<R>) {
-            synchronized(pointerHandlers) { pointerHandlers -= this }
+            synchronized(pointerHandlersLock) { pointerHandlers -= this }
             completion.resumeWith(result)
         }
 
@@ -872,8 +880,8 @@ internal class SuspendingPointerInputModifierNodeImpl(
                     // input events, not treated fairly in FIFO order. The second
                     // micro-delay reposts it to the back of the queue, after any input events
                     // that were posted but not processed during the first delay.
-                    delay(timeMillis - 1)
-                    delay(1)
+                    delay(timeMillis - WITH_TIMEOUT_MICRO_DELAY_MILLIS)
+                    delay(WITH_TIMEOUT_MICRO_DELAY_MILLIS)
 
                     pointerAwaiter?.resumeWithException(
                         PointerEventTimeoutCancellationException(timeMillis)
@@ -888,43 +896,22 @@ internal class SuspendingPointerInputModifierNodeImpl(
     }
 }
 
-private val EmptyStackTraceElements = emptyArray<StackTraceElement>()
-
 /**
  * An exception thrown from [AwaitPointerEventScope.withTimeout] when the execution time of the
  * coroutine is too long.
  */
-class PointerEventTimeoutCancellationException(time: Long) :
-    CancellationException("Timed out waiting for $time ms") {
-    override fun fillInStackTrace(): Throwable {
-        // Avoid null.clone() on Android <= 6.0 when accessing stackTrace
-        stackTrace = EmptyStackTraceElements
-        return this
-    }
-}
+expect class PointerEventTimeoutCancellationException(time: Long) : CancellationException
 
 /**
  * Used in place of the standard Job cancellation pathway to avoid reflective javaClass.simpleName
  * lookups to build the exception message and stack trace collection. Remove if these are changed in
  * kotlinx.coroutines.
  */
-private class PointerInputResetException : CancellationException("Pointer input was reset") {
-    override fun fillInStackTrace(): Throwable {
-        // Avoid null.clone() on Android <= 6.0 when accessing stackTrace
-        stackTrace = EmptyStackTraceElements
-        return this
-    }
-}
+internal expect class PointerInputResetException() : CancellationException
 
 /**
  * Also used in place of standard Job cancellation pathway; since we control this code path we
  * shouldn't need to worry about other code calling addSuppressed on this exception so a singleton
  * instance is used
  */
-private object CancelTimeoutCancellationException : CancellationException() {
-    override fun fillInStackTrace(): Throwable {
-        // Avoid null.clone() on Android <= 6.0 when accessing stackTrace
-        stackTrace = EmptyStackTraceElements
-        return this
-    }
-}
+internal expect object CancelTimeoutCancellationException : CancellationException

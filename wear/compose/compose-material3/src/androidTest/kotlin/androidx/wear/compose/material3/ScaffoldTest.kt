@@ -19,14 +19,20 @@ package androidx.wear.compose.material3
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.testutils.assertContainsColor
 import androidx.compose.testutils.assertDoesNotContainColor
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
@@ -35,10 +41,16 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.filters.SdkSuppress
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import com.google.common.truth.Truth.assertThat
+import junit.framework.TestCase.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -114,11 +126,49 @@ class ScaffoldTest {
 
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
     @Test
+    fun displays_scroll_indicator_initially_when_scrollable_lazycolumn() {
+        val scrollIndicatorColor = Color.Red
+
+        rule.setContentWithTheme {
+            TestScreenScaffoldWithTransformingLazyColumn(
+                scrollIndicatorColor = scrollIndicatorColor,
+                timeTextColor = Color.Blue
+            )
+        }
+
+        rule.onNodeWithTag(TEST_TAG).captureToImage().assertContainsColor(scrollIndicatorColor)
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
     fun hides_scroll_indicator_after_delay() {
         val scrollIndicatorColor = Color.Red
 
         rule.setContentWithTheme {
             TestScreenScaffold(
+                scrollIndicatorColor = scrollIndicatorColor,
+                timeTextColor = Color.Blue
+            )
+        }
+
+        // After a 2500 delay, the scroll indicator is animated away. Allow a little longer for the
+        // animation to complete.
+        rule.mainClock.autoAdvance = false
+        rule.mainClock.advanceTimeBy(4000)
+
+        rule
+            .onNodeWithTag(TEST_TAG)
+            .captureToImage()
+            .assertDoesNotContainColor(scrollIndicatorColor)
+    }
+
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun hides_scroll_indicator_after_delay_lazycolumn() {
+        val scrollIndicatorColor = Color.Red
+
+        rule.setContentWithTheme {
+            TestScreenScaffoldWithTransformingLazyColumn(
                 scrollIndicatorColor = scrollIndicatorColor,
                 timeTextColor = Color.Blue
             )
@@ -154,8 +204,149 @@ class ScaffoldTest {
         rule.onNodeWithTag(TEST_TAG).captureToImage().assertContainsColor(timeTextColor)
     }
 
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.O)
+    @Test
+    fun shows_time_text_after_delay_lazycolumn() {
+        val timeTextColor = Color.Red
+
+        rule.setContentWithTheme {
+            TestScreenScaffoldWithTransformingLazyColumn(
+                scrollIndicatorColor = Color.Blue,
+                timeTextColor = timeTextColor
+            )
+        }
+
+        rule.onNodeWithTag(SCROLL_TAG).performTouchInput { swipeUp(durationMillis = 10) }
+
+        // After a 2500 delay, the time text is animated back in. Allow a little longer for the
+        // animation to complete.
+        rule.mainClock.autoAdvance = false
+        rule.mainClock.advanceTimeBy(4000)
+
+        rule.onNodeWithTag(TEST_TAG).captureToImage().assertContainsColor(timeTextColor)
+    }
+
+    @Test
+    fun no_initial_room_for_bottom_button() {
+        var spaceAvailable: Int = Int.MAX_VALUE
+
+        rule.setContentWithTheme {
+            // Ensure we use the same size no mater where this is run.
+            Box(Modifier.size(300.dp)) {
+                TestScreenScaffold(scrollIndicatorColor = Color.Blue, timeTextColor = Color.Red) {
+                    BoxWithConstraints {
+                        // Check how much space we have for the bottom button
+                        spaceAvailable = constraints.maxHeight
+                    }
+                }
+            }
+        }
+
+        assertEquals(0, spaceAvailable)
+    }
+
+    @Test
+    fun no_initial_room_for_bottom_button_wear_lazy_column() {
+        var spaceAvailable: Int = Int.MAX_VALUE
+
+        rule.setContentWithTheme {
+            // Ensure we use the same size no mater where this is run.
+            Box(Modifier.size(300.dp)) {
+                TestScreenScaffoldWithTransformingLazyColumn(
+                    scrollIndicatorColor = Color.Blue,
+                    timeTextColor = Color.Red
+                ) {
+                    BoxWithConstraints {
+                        // Check how much space we have for the bottom button
+                        spaceAvailable = constraints.maxHeight
+                    }
+                }
+            }
+        }
+
+        assertEquals(0, spaceAvailable)
+    }
+
+    @Test
+    fun plenty_of_room_for_bottom_button_after_scroll() {
+        var spaceAvailable: Int = Int.MAX_VALUE
+        var expectedSpace = 0f
+
+        val screenSize = 300.dp
+        rule.setContentWithTheme {
+            // The available space is half the screen size minus half a Button height (converting
+            // dps to pixels).
+            expectedSpace =
+                with(LocalDensity.current) { ((screenSize - ButtonDefaults.Height) / 2).toPx() }
+
+            Box(Modifier.size(screenSize)) {
+                TestScreenScaffold(scrollIndicatorColor = Color.Blue, timeTextColor = Color.Red) {
+                    // Check how much space we have for the bottom button
+                    BoxWithConstraints { spaceAvailable = constraints.maxHeight }
+                }
+            }
+        }
+
+        rule.onNodeWithTag(SCROLL_TAG).performTouchInput { repeat(5) { swipeUp() } }
+        rule.waitForIdle()
+
+        // Use floats so we can specify a pixel of tolerance. SLC is less precise with respect to
+        // contentPadding, hence the tolerance is higher.
+        assertThat(spaceAvailable.toFloat()).isWithin(1.5f).of(expectedSpace)
+    }
+
+    @Test
+    fun no_initial_room_for_bottom_button_lc() {
+        var spaceAvailable: Int = Int.MAX_VALUE
+
+        rule.setContentWithTheme {
+            // Ensure we use the same size no mater where this is run.
+            Box(Modifier.size(300.dp)) {
+                TestBottomButtonLazyColumn {
+                    BoxWithConstraints {
+                        // Check how much space we have for the bottom button
+                        spaceAvailable = constraints.maxHeight
+                    }
+                }
+            }
+        }
+
+        assertEquals(0, spaceAvailable)
+    }
+
+    @Test fun no_room_for_bottom_button_after_scroll_lc() = check_bottom_button_lc(0.dp)
+
+    @Test fun some_room_for_bottom_button_after_scroll_lc() = check_bottom_button_lc(50.dp)
+
+    private fun check_bottom_button_lc(verticalPadding: Dp = 0.dp) {
+        var spaceAvailable: Int = Int.MAX_VALUE
+        var expectedSpace: Float = Float.MAX_VALUE
+
+        val screenSize = 300.dp
+        rule.setContentWithTheme {
+            expectedSpace = with(LocalDensity.current) { verticalPadding.toPx().coerceAtLeast(0f) }
+
+            Box(Modifier.size(screenSize)) {
+                TestBottomButtonLazyColumn(verticalPadding) {
+                    // Check how much space we have for the bottom button
+                    BoxWithConstraints { spaceAvailable = constraints.maxHeight }
+                }
+            }
+        }
+
+        rule.onNodeWithTag(SCROLL_TAG).performTouchInput { repeat(5) { swipeUp() } }
+        rule.waitForIdle()
+
+        // Use floats so we can specify a pixel of tolerance.
+        assertThat(spaceAvailable.toFloat()).isWithin(1f).of(expectedSpace)
+    }
+
     @Composable
-    private fun TestScreenScaffold(scrollIndicatorColor: Color, timeTextColor: Color) {
+    private fun TestScreenScaffold(
+        scrollIndicatorColor: Color,
+        timeTextColor: Color,
+        bottomButton: @Composable BoxScope.() -> Unit
+    ) {
         AppScaffold {
             val scrollState = rememberScalingLazyListState()
             ScreenScaffold(
@@ -169,7 +360,45 @@ class ScaffoldTest {
                                 .background(scrollIndicatorColor)
                     )
                 },
-                timeText = { Box(Modifier.size(20.dp).background(timeTextColor)) }
+                timeText = { Box(Modifier.size(20.dp).background(timeTextColor)) },
+                edgeButton = bottomButton,
+                edgeButtonSpacing = ScreenScaffoldDefaults.EdgeButtonMinSpacing,
+            ) {
+                ScalingLazyColumn(
+                    state = scrollState,
+                    contentPadding = PaddingValues(horizontal = 0.dp),
+                    modifier = Modifier.fillMaxSize().background(Color.Black).testTag(SCROLL_TAG)
+                ) {
+                    items(10) {
+                        Button(
+                            onClick = {},
+                            label = { Text("Item ${it + 1}") },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun TestScreenScaffold(
+        scrollIndicatorColor: Color,
+        timeTextColor: Color,
+    ) {
+        AppScaffold {
+            val scrollState = rememberScalingLazyListState()
+            ScreenScaffold(
+                modifier = Modifier.testTag(TEST_TAG),
+                scrollState = scrollState,
+                scrollIndicator = {
+                    Box(
+                        modifier =
+                            Modifier.size(20.dp)
+                                .align(Alignment.CenterEnd)
+                                .background(scrollIndicatorColor)
+                    )
+                },
+                timeText = { Box(Modifier.size(20.dp).background(timeTextColor)) },
             ) {
                 ScalingLazyColumn(
                     state = scrollState,
@@ -184,6 +413,89 @@ class ScaffoldTest {
                 }
             }
         }
+    }
+
+    @Composable
+    private fun TestScreenScaffoldWithTransformingLazyColumn(
+        scrollIndicatorColor: Color,
+        timeTextColor: Color,
+        edgeButton: @Composable BoxScope.() -> Unit = {}
+    ) {
+        AppScaffold {
+            val scrollState = rememberTransformingLazyColumnState()
+            ScreenScaffold(
+                modifier = Modifier.testTag(TEST_TAG),
+                scrollState = scrollState,
+                scrollIndicator = {
+                    Box(
+                        modifier =
+                            Modifier.size(20.dp)
+                                .align(Alignment.CenterEnd)
+                                .background(scrollIndicatorColor)
+                    )
+                },
+                timeText = { Box(Modifier.size(20.dp).background(timeTextColor)) },
+                edgeButton = edgeButton,
+                edgeButtonSpacing = 0.dp,
+            ) {
+                TransformingLazyColumn(
+                    state = scrollState,
+                    contentPadding = it,
+                    modifier = Modifier.fillMaxSize().background(Color.Black).testTag(SCROLL_TAG)
+                ) {
+                    items(10) {
+                        Button(
+                            onClick = {},
+                            label = { Text("Item ${it + 1}") },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun TestBottomButtonLazyColumn(
+        verticalPadding: Dp = 0.dp,
+        bottomButton: @Composable BoxScope.() -> Unit = {}
+    ) {
+        AppScaffold {
+            val scrollState = rememberLazyListState()
+            ScreenScaffold(
+                modifier = Modifier.testTag(TEST_TAG),
+                scrollState = scrollState,
+                edgeButton = bottomButton,
+                edgeButtonSpacing = 0.dp,
+            ) {
+                LazyColumn(
+                    state = scrollState,
+                    modifier = Modifier.fillMaxSize().background(Color.Black).testTag(SCROLL_TAG),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = verticalPadding)
+                ) {
+                    items(10) {
+                        Button(
+                            onClick = {},
+                            label = { Text("Item ${it + 1}") },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    data class TestConstraintsScope(val constraints: Constraints)
+
+    @Composable
+    fun BoxWithConstraints(onPlaced: TestConstraintsScope.() -> Unit) {
+
+        Box(
+            modifier =
+                Modifier.fillMaxSize().layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints)
+                    onPlaced(TestConstraintsScope(constraints))
+                    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                }
+        )
     }
 }
 

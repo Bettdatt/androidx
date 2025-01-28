@@ -18,7 +18,7 @@ package androidx.compose.ui.benchmark.focus
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReusableContent
@@ -26,17 +26,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.testutils.ComposeTestCase
 import androidx.compose.testutils.LayeredComposeTestCase
 import androidx.compose.testutils.ToggleableTestCase
+import androidx.compose.testutils.assertNoPendingChanges
 import androidx.compose.testutils.benchmark.ComposeBenchmarkRule
 import androidx.compose.testutils.benchmark.toggleStateBenchmarkRecompose
+import androidx.compose.testutils.doFramesUntilNoChangesPending
+import androidx.compose.testutils.recomposeAssertHadChanges
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.benchmark.repeatModifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.FocusState
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.test.filters.LargeTest
+import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,10 +60,12 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
     @Test
     fun modifyActiveHierarchy_addRemoveSubtree() {
-        composeBenchmarkRule.toggleStateBenchmarkRecompose({
-            object : LayeredComposeTestCase(), ToggleableTestCase {
+        composeBenchmarkRule.toggleAlternatingStateBenchmarkRecompose({
+            object : LayeredComposeTestCase(), ToggleableAlternatingTestCase {
+
                 private val focusRequester = FocusRequester()
                 private var shouldAddNodes by mutableStateOf(false)
+                private var rootFocusState: FocusState? = null
 
                 @Composable
                 override fun MeasuredContent() {
@@ -74,17 +82,22 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
                 @Composable
                 override fun ContentWrappers(content: @Composable () -> Unit) {
-                    Box(focusTargetModifiers()) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .onFocusEvent { rootFocusState = it }
+                            .then(focusTargetModifiers())
+                    ) {
                         Column {
-                            content()
                             Box(Modifier.focusRequester(focusRequester).focusTarget())
                             LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                            content()
                         }
                     }
                 }
 
-                override fun toggleState() {
-                    shouldAddNodes = !shouldAddNodes
+                override fun toggleState(isStateChangeMeasured: Boolean) {
+                    assertThat(rootFocusState?.hasFocus).isTrue()
+                    shouldAddNodes = isStateChangeMeasured
                 }
             }
         })
@@ -92,18 +105,67 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
     @Test
     fun modifyActiveHierarchy_addRemoveModifiersWithExistingSubtree() {
-        composeBenchmarkRule.toggleStateBenchmarkRecompose({
-            object : LayeredComposeTestCase(), ToggleableTestCase {
+        composeBenchmarkRule.toggleAlternatingStateBenchmarkRecompose({
+            object : LayeredComposeTestCase(), ToggleableAlternatingTestCase {
+
+                private val focusRequester = FocusRequester()
+                private var shouldAddNodes by mutableStateOf(false)
+                private var rootFocusState: FocusState? = null
+
+                @Composable
+                override fun MeasuredContent() {
+                    Box(Modifier.thenIf(shouldAddNodes) { focusTargetModifiers() }) {
+                        repeat(count) {
+                            Box(Modifier.focusTarget()) {
+                                repeat(count) { Box(Modifier.focusTarget()) }
+                            }
+                        }
+                    }
+                }
+
+                @Composable
+                override fun ContentWrappers(content: @Composable () -> Unit) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .onFocusEvent { rootFocusState = it }
+                            .then(focusTargetModifiers())
+                    ) {
+                        Column {
+                            Box(Modifier.focusRequester(focusRequester).focusTarget())
+                            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                            content()
+                        }
+                    }
+                }
+
+                override fun toggleState(isStateChangeMeasured: Boolean) {
+                    assertThat(rootFocusState?.hasFocus).isTrue()
+                    shouldAddNodes = isStateChangeMeasured
+                }
+            }
+        })
+    }
+
+    @Test
+    fun modifyActiveHierarchy_addRemoveModifiersWithExistingActiveSubtree() {
+        composeBenchmarkRule.toggleAlternatingStateBenchmarkRecompose({
+            object : LayeredComposeTestCase(), ToggleableAlternatingTestCase {
+
                 private val focusRequester = FocusRequester()
                 private var shouldAddNodes by mutableStateOf(false)
 
                 @Composable
                 override fun MeasuredContent() {
                     Box(Modifier.thenIf(shouldAddNodes) { focusTargetModifiers() }) {
-                        repeat(count) {
-                            Box(Modifier.thenIf(shouldAddNodes) { Modifier.focusTarget() }) {
-                                repeat(count) {
-                                    Box(Modifier.thenIf(shouldAddNodes) { Modifier.focusTarget() })
+                        for (i in 0 until count) {
+                            Box(Modifier.focusTarget()) {
+                                for (j in 0 until count) {
+                                    if (i == count - 1 && j == count - 1) {
+                                        // Focus on the last child in a depth first traversal
+                                        Box(Modifier.focusRequester(focusRequester).focusTarget())
+                                    } else {
+                                        Box(Modifier.focusTarget())
+                                    }
                                 }
                             }
                         }
@@ -112,17 +174,14 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
                 @Composable
                 override fun ContentWrappers(content: @Composable () -> Unit) {
-                    Box(focusTargetModifiers()) {
-                        Column {
-                            content()
-                            Box(Modifier.focusRequester(focusRequester).focusTarget())
-                            LaunchedEffect(Unit) { focusRequester.requestFocus() }
-                        }
+                    Box(Modifier.fillMaxSize().then(focusTargetModifiers())) {
+                        content()
+                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
                     }
                 }
 
-                override fun toggleState() {
-                    shouldAddNodes = !shouldAddNodes
+                override fun toggleState(isStateChangeMeasured: Boolean) {
+                    shouldAddNodes = isStateChangeMeasured
                 }
             }
         })
@@ -140,6 +199,11 @@ class ParameterizedFocusBenchmark(val count: Int) {
                     ReusableContent(reuseKey) { Box(focusTargetModifiers()) }
                 }
 
+                @Composable
+                override fun ContentWrappers(content: @Composable () -> Unit) {
+                    Box(Modifier.fillMaxSize()) { content() }
+                }
+
                 override fun toggleState() {
                     reuseKey++
                 }
@@ -154,6 +218,7 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
                 private val focusRequester = FocusRequester()
                 private var reuseKey by mutableStateOf(0)
+                private var rootFocusState: FocusState? = null
 
                 @Composable
                 override fun MeasuredContent() {
@@ -162,13 +227,17 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
                 @Composable
                 override fun ContentWrappers(content: @Composable () -> Unit) {
-                    Box(Modifier.focusRequester(focusRequester).focusTarget()) {
+                    Column(
+                        Modifier.fillMaxSize().onFocusEvent { rootFocusState = it }.focusTarget()
+                    ) {
+                        Box(Modifier.focusRequester(focusRequester).focusTarget())
                         LaunchedEffect(Unit) { focusRequester.requestFocus() }
                         content()
                     }
                 }
 
                 override fun toggleState() {
+                    assertThat(rootFocusState?.hasFocus).isTrue()
                     reuseKey++
                 }
             }
@@ -186,10 +255,15 @@ class ParameterizedFocusBenchmark(val count: Int) {
                 @Composable
                 override fun MeasuredContent() {
                     if (moveContent) {
-                        Box(Modifier.size(5.dp)) { content() }
+                        Box { content() }
                     } else {
-                        Box(Modifier.size(10.dp)) { content() }
+                        Box { content() }
                     }
+                }
+
+                @Composable
+                override fun ContentWrappers(content: @Composable () -> Unit) {
+                    Box(Modifier.fillMaxSize()) { content() }
                 }
 
                 override fun toggleState() {
@@ -207,25 +281,30 @@ class ParameterizedFocusBenchmark(val count: Int) {
                 private val focusRequester = FocusRequester()
                 private var moveContent by mutableStateOf(false)
                 private val movableContent = movableContentOf { Box(focusTargetModifiers()) }
+                private var rootFocusState: FocusState? = null
 
                 @Composable
                 override fun MeasuredContent() {
                     if (moveContent) {
-                        Box(Modifier.size(5.dp)) { movableContent() }
+                        Box { movableContent() }
                     } else {
-                        Box(Modifier.size(10.dp)) { movableContent() }
+                        Box { movableContent() }
                     }
                 }
 
                 @Composable
                 override fun ContentWrappers(content: @Composable () -> Unit) {
-                    Box(Modifier.focusRequester(focusRequester).focusTarget()) {
+                    Column(
+                        Modifier.fillMaxSize().onFocusEvent { rootFocusState = it }.focusTarget()
+                    ) {
+                        Box(Modifier.focusRequester(focusRequester).focusTarget())
                         LaunchedEffect(Unit) { focusRequester.requestFocus() }
                         content()
                     }
                 }
 
                 override fun toggleState() {
+                    assertThat(rootFocusState?.hasFocus).isTrue()
                     moveContent = !moveContent
                 }
             }
@@ -236,5 +315,67 @@ class ParameterizedFocusBenchmark(val count: Int) {
 
     private inline fun Modifier.thenIf(condition: Boolean, block: () -> Modifier): Modifier {
         return if (condition) then(block()) else this
+    }
+
+    /**
+     * Measures the recomposition time of the hierarchy after changing a state and then changes the
+     * state again to return to the initial composition excluding that from measurement.
+     *
+     * This is useful for benchmarks that toggle state between 2 values, i.e., an initial and target
+     * values, and only the change to the target value is intended to be measured. For example, with
+     * a boolean state, nodes are added when the state changes from false to true and removed when
+     * the state changes back to false. In this example scenario, only the node addition is
+     * measured.
+     *
+     * @param assertOneRecomposition whether the benchmark will fail if there are pending
+     *   recompositions after the first recomposition. By default this is true to enforce
+     *   correctness in the benchmark, but for components that have animations after being
+     *   recomposed this can be turned off to benchmark just the first recomposition without any
+     *   pending animations.
+     * @param requireRecomposition whether the benchmark will fail if no changes were produce from a
+     *   recomposition.there are pending recompositions. By default this is true to enforce
+     *   correctness.
+     */
+    private fun <T> ComposeBenchmarkRule.toggleAlternatingStateBenchmarkRecompose(
+        caseFactory: () -> T,
+        assertOneRecomposition: Boolean = true,
+        requireRecomposition: Boolean = true,
+    ) where T : ComposeTestCase, T : ToggleableAlternatingTestCase {
+
+        runBenchmarkFor(caseFactory) {
+            fun recomposeWithAssertions() {
+                if (requireRecomposition) {
+                    recomposeAssertHadChanges()
+                } else {
+                    recompose()
+                }
+                if (assertOneRecomposition) {
+                    assertNoPendingChanges()
+                }
+            }
+
+            runOnUiThread { doFramesUntilNoChangesPending() }
+            measureRepeatedOnUiThread {
+                runWithTimingDisabled { getTestCase().toggleState(true) }
+                recomposeWithAssertions()
+                runWithTimingDisabled {
+                    getTestCase().toggleState(false)
+                    recomposeWithAssertions()
+                }
+            }
+        }
+    }
+
+    /**
+     * Test case that triggers a state change with alternating enabling/disabling measurement of the
+     * effect of the state change.
+     *
+     * This is similar to [ToggleableTestCase] with the difference that this allows measuring only
+     * one direction of state change. For example, this can be used to only measure checking the
+     * checkbox and skipping measurement of unchecking it. This is run multiple times during a
+     * benchmark run.
+     */
+    private interface ToggleableAlternatingTestCase {
+        fun toggleState(isStateChangeMeasured: Boolean)
     }
 }

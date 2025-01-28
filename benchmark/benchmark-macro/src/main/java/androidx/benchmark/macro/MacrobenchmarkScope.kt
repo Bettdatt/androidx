@@ -24,6 +24,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.benchmark.Arguments
 import androidx.benchmark.DeviceInfo
+import androidx.benchmark.InstrumentationResults
 import androidx.benchmark.Outputs
 import androidx.benchmark.Profiler
 import androidx.benchmark.Shell
@@ -68,12 +69,68 @@ public class MacrobenchmarkScope(
     /** This is `true` iff method tracing is currently active for this benchmarking session. */
     private var isMethodTracingSessionActive: Boolean = false
 
+    internal enum class KillFlushMode {
+        /** Just kill the process, nothing fancy. */
+        None,
+
+        /**
+         * When used, the app will be forced to flush its ART profiles to disk before being killed.
+         * This allows them to be later collected e.g. by a `BaselineProfile` capture, or immediate
+         * compilation by [CompilationMode.Partial] with warmupIterations.
+         */
+        FlushArtProfiles,
+
+        /**
+         * After killing the process, clear any potential runtime image.
+         *
+         * Starting in API 34 (and below with mainline), `verify` complied apps will attempt to
+         * store initialized classes to disk directly. To consistently capture worst case `verify`
+         * performance, this means macrobenchmark must recompile the target app with `verify`.
+         *
+         * @See DeviceInfo.supportsRuntimeImages
+         */
+        ClearArtRuntimeImage,
+    }
+
+    internal inline fun withKillFlushMode(
+        current: KillFlushMode,
+        override: KillFlushMode,
+        block: MacrobenchmarkScope.() -> Unit
+    ) {
+        check(killFlushMode == current) { "Expected KFM = $current, was $killFlushMode" }
+        killFlushMode = override
+        try {
+            block(this)
+        } finally {
+            check(killFlushMode == override) {
+                "Expected KFM at end to be = $override, was $killFlushMode"
+            }
+            killFlushMode = current
+        }
+    }
+
+    internal var killFlushMode: KillFlushMode = KillFlushMode.None
+        private set(value) {
+            hasFlushedArtProfiles = false
+            field = value
+        }
+
     /**
-     * When `true`, the app will be forced to flush its ART profiles to disk before being killed.
-     * This allows them to be later collected e.g. by a `BaselineProfile` capture, or immediate
-     * compilation by `CompilationMode.Partial` with warmupIterations.
+     * When `true`, the app has successfully flushed art profiles at least once.
+     *
+     * This will only be set by [killProcessAndFlushArtProfiles] when called directly, or
+     * [killProcess] when [KillFlushMode.FlushArtProfiles] is used.
      */
-    internal var flushArtProfiles: Boolean = false
+    internal var hasFlushedArtProfiles: Boolean = false
+        private set
+
+    /**
+     * When `true`, the app has attempted to flush the runtime image during [killProcess].
+     *
+     * This will only be set by [killProcess] when [KillFlushMode.ClearArtRuntimeImage] is used.
+     */
+    internal var hasClearedRuntimeImage: Boolean = false
+        private set
 
     /** `true` if the app is a system app. */
     internal var isSystemApp: Boolean = false
@@ -108,9 +165,10 @@ public class MacrobenchmarkScope(
      * Start an activity, by default the launcher activity of the package, and wait until its launch
      * completes.
      *
-     * This call will ignore any parcelable extras on the intent, as the start is performed by
-     * converting the Intent to a URI, and starting via `am start` shell command. Note that from api
-     * 33 the launch intent needs to have category {@link android.intent.category.LAUNCHER}.
+     * This call supports primitive extras on the intent, but will ignore any
+     * [android.os.Parcelable] extras, as the start is performed by converting the Intent to a URI,
+     * and starting via the `am start` shell command. Note that from api 33 the launch intent needs
+     * to have category `android.intent.category.LAUNCHER`.
      *
      * @param block Allows customization of the intent used to launch the activity.
      * @throws IllegalStateException if unable to acquire intent for package.
@@ -129,8 +187,10 @@ public class MacrobenchmarkScope(
     /**
      * Start an activity with the provided intent, and wait until its launch completes.
      *
-     * This call will ignore any parcelable extras on the intent, as the start is performed by
-     * converting the Intent to a URI, and starting via `am start` shell command.
+     * This call supports primitive extras on the intent, but will ignore any
+     * [android.os.Parcelable] extras, as the start is performed by converting the Intent to a URI,
+     * and starting via the `am start` shell command. Note that from api 33 the launch intent needs
+     * to have category `android.intent.category.LAUNCHER`.
      *
      * @param intent Specifies which app/Activity should be launched.
      */
@@ -208,6 +268,13 @@ public class MacrobenchmarkScope(
             return
         }
 
+        if (!Shell.isPackageAlive(packageName)) {
+            throw IllegalStateException(
+                "Target package $packageName is not running," +
+                    " check logcat to verify the activity launched correctly"
+            )
+        }
+
         // `am start -W` doesn't reliably wait for process to complete and renderthread to produce
         // a new frame (b/226179160), so we use `dumpsys gfxinfo <package> framestats` to determine
         // when the next frame is produced.
@@ -281,19 +348,38 @@ public class MacrobenchmarkScope(
         replaceWith = ReplaceWith("killProcess()")
     )
     @Suppress("UNUSED_PARAMETER")
-    public fun killProcess(useKillAll: Boolean = false) {
+    fun killProcess(useKillAll: Boolean = false) {
         killProcess()
     }
 
     /** Force-stop the process being measured. */
-    public fun killProcess() {
+    fun killProcess() {
         // Method traces are only flushed is a method tracing session is active.
         flushMethodTraces()
-        if (flushArtProfiles && Build.VERSION.SDK_INT >= 24) {
+
+        if (killFlushMode == KillFlushMode.FlushArtProfiles && Build.VERSION.SDK_INT >= 24) {
             // Flushing ART profiles will also kill the process at the end.
             killProcessAndFlushArtProfiles()
         } else {
             killProcessImpl()
+            if (
+                killFlushMode == KillFlushMode.ClearArtRuntimeImage && Build.VERSION.SDK_INT >= 24
+            ) {
+                if (DeviceInfo.verifyClearsRuntimeImage) {
+                    // clear the runtime image
+                    CompilationMode.cmdPackageCompile(packageName, "verify")
+                } else if (Shell.isSessionRooted()) {
+                    CompilationMode.cmdPackageCompileReset(packageName)
+                } else {
+                    // TODO - follow up!
+                    // b/368404173
+                    InstrumentationResults.scheduleIdeWarningOnNextReport(
+                        "Unable to clear Runtime Image, subsequent launches/iterations may" +
+                            " exhibit faster startup than production due to accelerated class" +
+                            " loading."
+                    )
+                }
+            }
         }
     }
 
@@ -308,7 +394,7 @@ public class MacrobenchmarkScope(
      * @throws IllegalStateException if the device is not rooted, and the target app cannot be
      *   signalled to drop its shader cache.
      */
-    public fun dropShaderCache() {
+    fun dropShaderCache() {
         if (Arguments.dropShadersEnable) {
             Log.d(TAG, "Dropping shader cache for $packageName")
             val dropError = ProfileInstallBroadcast.dropShaderCache(packageName)
@@ -377,11 +463,15 @@ public class MacrobenchmarkScope(
     internal fun killProcessAndFlushArtProfiles() {
         Log.d(TAG, "Flushing ART profiles for $packageName")
         // For speed profile compilation, ART team recommended to wait for 5 secs when app
-        // is in the foreground, dump the profile, wait for an additional second before
-        // speed-profile compilation.
+        // is in the foreground, dump the profile in each process waiting an additional second each
+        // before speed-profile compilation.
         @Suppress("BanThreadSleep") Thread.sleep(5000)
-        val saveResult = ProfileInstallBroadcast.saveProfile(packageName)
-        if (saveResult == null) {
+        val saveResult = ProfileInstallBroadcast.saveProfilesForAllProcesses(packageName)
+        if (saveResult.processCount > 0) {
+            Log.d(TAG, "Flushed profiles in ${saveResult.processCount} processes")
+            hasFlushedArtProfiles = true
+        }
+        if (saveResult.error == null) {
             killProcessImpl()
         } else {
             if (Shell.isSessionRooted()) {
@@ -391,27 +481,29 @@ public class MacrobenchmarkScope(
                     Shell.executeScriptCaptureStdoutStderr("killall -s SIGUSR1 $packageName")
                 check(response.isBlank()) {
                     "Failed to dump profile for $packageName ($response),\n" +
-                        " and failed to save profile with broadcast: $saveResult"
+                        " and failed to save profile with broadcast: ${saveResult.error}"
                 }
             } else {
-                throw RuntimeException(saveResult)
+                throw RuntimeException(saveResult.error)
             }
         }
     }
 
     /** Force-stop the process being measured. */
-    private fun killProcessImpl() {
-        val isRooted = Shell.isSessionRooted()
-        Log.d(TAG, "Killing process $packageName")
-        if (isRooted && isSystemApp) {
-            device.executeShellCommand("killall $packageName")
-        } else {
-            // We want to use `am force-stop` for apps that are not system apps
-            // to make sure app components are not automatically restarted by system_server.
-            device.executeShellCommand("am force-stop $packageName")
+    internal fun killProcessImpl() {
+        Shell.killProcessesAndWait(packageName) {
+            val isRooted = Shell.isSessionRooted()
+            Log.d(TAG, "Killing process $packageName")
+            if (isRooted && isSystemApp) {
+                device.executeShellCommand("killall $packageName")
+            } else {
+                // We want to use `am force-stop` for apps that are not system apps
+                // to make sure app components are not automatically restarted by system_server.
+                device.executeShellCommand("am force-stop $packageName")
+            }
+            // System Apps need an additional Thread.sleep() to ensure that the process is killed.
+            @Suppress("BanThreadSleep") Thread.sleep(Arguments.killProcessDelayMillis)
         }
-        // System Apps need an additional Thread.sleep() to ensure that the process is killed.
-        @Suppress("BanThreadSleep") Thread.sleep(Arguments.killProcessDelayMillis)
     }
 
     /**
@@ -539,7 +631,7 @@ public class MacrobenchmarkScope(
                 File.createTempFile("methodTrace", null, Outputs.dirUsableByAppAndShell)
             // Staging location before we write it again using Outputs.writeFile(...)
             // NOTE: staging copy may be unnecessary if we just use a single `cp`
-            Shell.executeScriptSilent("cp '$tracePath' '$stagingFile'")
+            Shell.cp(from = tracePath, to = stagingFile.absolutePath)
 
             // Report file
             val outputPath =
@@ -549,7 +641,7 @@ public class MacrobenchmarkScope(
 
                     // Cleanup
                     stagingFile.delete()
-                    Shell.executeScriptSilent("rm \"$tracePath\"")
+                    Shell.rm(tracePath)
                 }
             val traceLabel = "MethodTrace iteration ${iteration ?: 0}"
             // Keep track of the label and the corresponding output paths.

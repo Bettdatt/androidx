@@ -28,7 +28,6 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.currentValueOf
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -44,7 +43,8 @@ import kotlin.math.roundToInt
  * This modifier is not needed for touch target expansion to happen. It only affects layout, to make
  * sure there is adequate space for touch target expansion.
  */
-fun Modifier.minimumInteractiveComponentSize(): Modifier = this then MinimumInteractiveModifier
+public fun Modifier.minimumInteractiveComponentSize(): Modifier =
+    this then MinimumInteractiveModifier
 
 internal object MinimumInteractiveModifier : ModifierNodeElement<MinimumInteractiveModifierNode>() {
     override fun create(): MinimumInteractiveModifierNode = MinimumInteractiveModifierNode()
@@ -80,20 +80,20 @@ internal class MinimumInteractiveModifierNode :
         // Be at least as big as the minimum dimension in both dimensions
         val width =
             if (enforcement) {
-                maxOf(placeable.width, size.width.roundToPx())
+                maxOf(placeable.width, size.roundToPx())
             } else {
                 placeable.width
             }
         val height =
             if (enforcement) {
-                maxOf(placeable.height, size.height.roundToPx())
+                maxOf(placeable.height, size.roundToPx())
             } else {
                 placeable.height
             }
 
         return layout(width, height) {
-            val centerX = ((width - placeable.width) / 2f).roundToInt()
-            val centerY = ((height - placeable.height) / 2f).roundToInt()
+            val centerX = ((width - placeable.width - 1) / 2f).roundToInt()
+            val centerY = ((height - placeable.height - 1) / 2f).roundToInt()
             placeable.place(centerX, centerY)
         }
     }
@@ -110,9 +110,9 @@ internal class MinimumInteractiveModifierNode :
 @Suppress("OPT_IN_MARKER_ON_WRONG_TARGET")
 @get:ExperimentalWearMaterial3Api
 @ExperimentalWearMaterial3Api
-val LocalMinimumInteractiveComponentEnforcement: ProvidableCompositionLocal<Boolean> =
+public val LocalMinimumInteractiveComponentEnforcement: ProvidableCompositionLocal<Boolean> =
     staticCompositionLocalOf {
         true
     }
 
-private val minimumInteractiveComponentSize: DpSize = DpSize(48.dp, 48.dp)
+internal val minimumInteractiveComponentSize = 48.dp

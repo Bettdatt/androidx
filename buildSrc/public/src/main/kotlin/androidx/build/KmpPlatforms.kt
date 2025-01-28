@@ -34,33 +34,31 @@ const val ENABLED_KMP_TARGET_PLATFORMS = "androidx.enabled.kmp.target.platforms"
 enum class PlatformGroup {
     JVM,
     JS,
+    WASM,
     MAC,
+    WINDOWS,
     LINUX,
     DESKTOP,
     ANDROID_NATIVE;
 
     companion object {
         /** Target platform groups which require native compilation (e.g. LLVM). */
-        val native = listOf(MAC, LINUX, ANDROID_NATIVE)
+        val native = listOf(MAC, LINUX, WINDOWS, ANDROID_NATIVE)
 
         /**
-         * Target platform groups which are enabled by default.
-         *
-         * Do *not* enable [JS] unless you have read and understand this:
-         * https://blog.jetbrains.com/kotlin/2021/10/important-ua-parser-js-exploit-and-kotlin-js/
+         * Target platform groups which are enabled by default. We currently enable all platforms by
+         * default.
          */
-        val enabledByDefault = listOf(JVM, DESKTOP, MAC, LINUX, ANDROID_NATIVE)
+        val enabledByDefault = listOf(ANDROID_NATIVE, DESKTOP, JS, JVM, LINUX, MAC, WASM, WINDOWS)
     }
 }
 
 /** Target platforms supported by the AndroidX implementation of Kotlin multi-platform. */
-enum class PlatformIdentifier(
-    val id: String,
-    @Suppress("unused") private val group: PlatformGroup
-) {
+enum class PlatformIdentifier(val id: String, val group: PlatformGroup) {
     JVM("jvm", PlatformGroup.JVM),
     JVM_STUBS("jvmStubs", PlatformGroup.JVM),
     JS("js", PlatformGroup.JS),
+    WASM_JS("wasmJs", PlatformGroup.WASM),
     ANDROID("android", PlatformGroup.JVM),
     ANDROID_NATIVE_ARM32("androidNativeArm32", PlatformGroup.ANDROID_NATIVE),
     ANDROID_NATIVE_ARM64("androidNativeArm64", PlatformGroup.ANDROID_NATIVE),
@@ -68,6 +66,7 @@ enum class PlatformIdentifier(
     ANDROID_NATIVE_X64("androidNativeX64", PlatformGroup.ANDROID_NATIVE),
     MAC_ARM_64("macosarm64", PlatformGroup.MAC),
     MAC_OSX_64("macosx64", PlatformGroup.MAC),
+    MINGW_X_64("mingwx64", PlatformGroup.WINDOWS),
     LINUX_ARM_64("linuxarm64", PlatformGroup.LINUX),
     LINUX_X_64("linuxx64", PlatformGroup.LINUX),
     LINUX_X_64_STUBS("linuxx64Stubs", PlatformGroup.LINUX),
@@ -78,6 +77,7 @@ enum class PlatformIdentifier(
     WATCHOS_X_64("watchosx64", PlatformGroup.MAC),
     WATCHOS_ARM_32("watchosarm64", PlatformGroup.MAC),
     WATCHOS_ARM_64("watchosarm64", PlatformGroup.MAC),
+    WATCHOS_DEVICE_ARM_64("watchosdevicearm64", PlatformGroup.MAC),
     TVOS_SIMULATOR_ARM_64("tvossimulatorarm64", PlatformGroup.MAC),
     TVOS_X_64("tvosx64", PlatformGroup.MAC),
     TVOS_ARM_64("tvosarm64", PlatformGroup.MAC),
@@ -138,8 +138,12 @@ fun Project.enableAndroidNative(): Boolean =
 
 fun Project.enableMac(): Boolean = enabledKmpPlatforms.contains(PlatformGroup.MAC)
 
+fun Project.enableWindows(): Boolean = enabledKmpPlatforms.contains(PlatformGroup.WINDOWS)
+
 fun Project.enableLinux(): Boolean = enabledKmpPlatforms.contains(PlatformGroup.LINUX)
 
 fun Project.enableJvm(): Boolean = enabledKmpPlatforms.contains(PlatformGroup.JVM)
 
 fun Project.enableDesktop(): Boolean = enabledKmpPlatforms.contains(PlatformGroup.DESKTOP)
+
+fun Project.enableWasmJs(): Boolean = enabledKmpPlatforms.contains(PlatformGroup.WASM)

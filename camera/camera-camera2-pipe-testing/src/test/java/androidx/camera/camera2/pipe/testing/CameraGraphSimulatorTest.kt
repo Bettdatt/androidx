@@ -58,7 +58,8 @@ class CameraGraphSimulatorTest {
     private val testScope = TestScope()
     private val metadata =
         FakeCameraMetadata(
-            mapOf(CameraCharacteristics.LENS_FACING to CameraCharacteristics.LENS_FACING_FRONT)
+            characteristics =
+                mapOf(CameraCharacteristics.LENS_FACING to CameraCharacteristics.LENS_FACING_FRONT)
         )
 
     private val streamConfig = CameraStream.Config.create(Size(640, 480), StreamFormat.YUV_420_888)
@@ -72,13 +73,13 @@ class CameraGraphSimulatorTest {
     @Test
     fun simulatorCanSimulateRepeatingFrames() =
         testScope.runTest {
-            val stream = simulator.cameraGraph.streams[streamConfig]!!
+            val stream = simulator.streams[streamConfig]!!
             val listener = FakeRequestListener()
             val request = Request(streams = listOf(stream.id), listeners = listOf(listener))
-            simulator.cameraGraph.acquireSession().use { it.startRepeating(request) }
-            simulator.cameraGraph.start()
+            simulator.acquireSession().use { it.startRepeating(request) }
+            simulator.start()
             simulator.simulateCameraStarted()
-            simulator.simulateFakeSurfaceConfiguration()
+            simulator.initializeSurfaces()
             advanceUntilIdle()
 
             val frame = simulator.simulateNextFrame()
@@ -160,12 +161,12 @@ class CameraGraphSimulatorTest {
     @Test
     fun simulatorAbortsRequests() =
         testScope.runTest {
-            val stream = simulator.cameraGraph.streams[streamConfig]!!
+            val stream = simulator.streams[streamConfig]!!
             val listener = FakeRequestListener()
             val request = Request(streams = listOf(stream.id), listeners = listOf(listener))
 
-            simulator.cameraGraph.acquireSession().use { it.submit(request = request) }
-            simulator.cameraGraph.close()
+            simulator.acquireSession().use { it.submit(request = request) }
+            simulator.close()
 
             val abortedEvent = listener.onAbortedFlow.first()
             assertThat(abortedEvent.request).isSameInstanceAs(request)
@@ -174,15 +175,15 @@ class CameraGraphSimulatorTest {
     @Test
     fun simulatorCanIssueBufferLoss() =
         testScope.runTest {
-            val stream = simulator.cameraGraph.streams[streamConfig]!!
+            val stream = simulator.streams[streamConfig]!!
             val listener = FakeRequestListener()
             val request = Request(streams = listOf(stream.id), listeners = listOf(listener))
 
-            simulator.cameraGraph.acquireSession().use { it.submit(request = request) }
+            simulator.acquireSession().use { it.submit(request = request) }
 
-            simulator.cameraGraph.start()
+            simulator.start()
             simulator.simulateCameraStarted()
-            simulator.simulateFakeSurfaceConfiguration()
+            simulator.initializeSurfaces()
             advanceUntilIdle()
 
             val frame = simulator.simulateNextFrame()
@@ -198,14 +199,14 @@ class CameraGraphSimulatorTest {
     @Test
     fun simulatorCanIssueMultipleFrames() =
         testScope.runTest {
-            val stream = simulator.cameraGraph.streams[streamConfig]!!
+            val stream = simulator.streams[streamConfig]!!
             val listener = FakeRequestListener()
             val request = Request(streams = listOf(stream.id), listeners = listOf(listener))
 
-            simulator.cameraGraph.acquireSession().use { it.startRepeating(request = request) }
-            simulator.cameraGraph.start()
+            simulator.acquireSession().use { it.startRepeating(request = request) }
+            simulator.start()
             simulator.simulateCameraStarted()
-            simulator.simulateFakeSurfaceConfiguration()
+            simulator.initializeSurfaces()
             advanceUntilIdle()
 
             val frame1 = simulator.simulateNextFrame()
@@ -283,19 +284,19 @@ class CameraGraphSimulatorTest {
     @Test
     fun simulatorCanSimulateGraphState() =
         testScope.runTest {
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStopped)
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStopped)
 
-            simulator.cameraGraph.start()
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStarting)
+            simulator.start()
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStarting)
 
             simulator.simulateCameraStarted()
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStarted)
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStarted)
 
-            simulator.cameraGraph.stop()
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStopping)
+            simulator.stop()
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStopping)
 
             simulator.simulateCameraStopped()
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStopped)
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStopped)
         }
 
     @Test
@@ -305,22 +306,22 @@ class CameraGraphSimulatorTest {
 
             simulator.simulateCameraError(error)
             // The CameraGraph is stopped at this point, so the errors should be ignored.
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStopped)
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStopped)
 
-            simulator.cameraGraph.start()
+            simulator.start()
             simulator.simulateCameraError(error)
-            val graphState = simulator.cameraGraph.graphState.value
+            val graphState = simulator.graphState.value
             assertThat(graphState).isInstanceOf(GraphStateError::class.java)
             val graphStateError = graphState as GraphStateError
             assertThat(graphStateError.cameraError).isEqualTo(error.cameraError)
             assertThat(graphStateError.willAttemptRetry).isEqualTo(error.willAttemptRetry)
 
             simulator.simulateCameraStarted()
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStarted)
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStarted)
 
-            simulator.cameraGraph.stop()
+            simulator.stop()
             simulator.simulateCameraStopped()
             simulator.simulateCameraError(error)
-            assertThat(simulator.cameraGraph.graphState.value).isEqualTo(GraphStateStopped)
+            assertThat(simulator.graphState.value).isEqualTo(GraphStateStopped)
         }
 }

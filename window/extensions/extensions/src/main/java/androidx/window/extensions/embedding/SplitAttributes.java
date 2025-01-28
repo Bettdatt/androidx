@@ -27,10 +27,11 @@ import android.annotation.SuppressLint;
 
 import androidx.annotation.FloatRange;
 import androidx.annotation.IntDef;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.window.extensions.RequiresVendorApiLevel;
 import androidx.window.extensions.core.util.function.Function;
+
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -75,8 +76,7 @@ public class SplitAttributes {
      * window occupied by the primary and secondary activity containers.
      */
     public static class SplitType {
-        @NonNull
-        private final String mDescription;
+        private final @NonNull String mDescription;
 
         SplitType(@NonNull String description) {
             mDescription = description;
@@ -99,15 +99,13 @@ public class SplitAttributes {
             return mDescription.equals(that.mDescription);
         }
 
-        @NonNull
         @Override
-        public String toString() {
+        public @NonNull String toString() {
             return mDescription;
         }
 
         @SuppressLint("Range") // The range is covered.
-        @NonNull
-        static SplitType createSplitTypeFromLegacySplitRatio(
+        static @NonNull SplitType createSplitTypeFromLegacySplitRatio(
                 @FloatRange(from = 0.0, to = 1.0) float splitRatio) {
             // Treat 0.0 and 1.0 as ExpandContainerSplitType because it means the parent container
             // is filled with secondary or primary container.
@@ -120,7 +118,7 @@ public class SplitAttributes {
         /**
          * A window split that's based on the ratio of the size of the primary container to the
          * size of the parent window (excluding area unavailable for the containers such as the
-         * divider.
+         * divider. See {@link DividerAttributes}).
          *
          * <p>Values in the non-inclusive range (0.0, 1.0) define the size of
          * the primary container relative to the size of the parent window:
@@ -144,7 +142,7 @@ public class SplitAttributes {
              *
              * @param ratio The proportion of the parent window occupied by the primary container
              *              of the split (excluding area unavailable for the containers such as
-             *              the divider. Can be a value in the
+             *              the divider. See {@link DividerAttributes}). Can be a value in the
              *              non-inclusive range (0.0, 1.0). Use
              *              {@link SplitType.ExpandContainersSplitType} to create a split
              *              type that occupies the entire parent window.
@@ -163,7 +161,7 @@ public class SplitAttributes {
             /**
              * Gets the proportion of the parent window occupied by the primary activity
              * container of the split (excluding area unavailable for the containers such as the
-             * divider.
+             * divider. See {@link DividerAttributes}) .
              *
              * @return The proportion of the split occupied by the primary
              * container.
@@ -184,8 +182,7 @@ public class SplitAttributes {
              * @return A {@code RatioSplitType} in which the activity containers
              * occupy equal portions of the parent window.
              */
-            @NonNull
-            public static RatioSplitType splitEqually() {
+            public static @NonNull RatioSplitType splitEqually() {
                 return new RatioSplitType(0.5f);
             }
         }
@@ -217,8 +214,7 @@ public class SplitAttributes {
          * {@link #getFallbackSplitType()}.
          */
         public static final class HingeSplitType extends SplitType {
-            @NonNull
-            private final SplitType mFallbackSplitType;
+            private final @NonNull SplitType mFallbackSplitType;
 
             /**
              * Creates an instance of this {@code HingeSplitType}.
@@ -237,8 +233,7 @@ public class SplitAttributes {
              * Returns the fallback {@link SplitType} if a split based on the
              * device hinge or separating fold cannot be determined.
              */
-            @NonNull
-            public SplitType getFallbackSplitType() {
+            public @NonNull SplitType getFallbackSplitType() {
                 return mFallbackSplitType;
             }
         }
@@ -374,14 +369,14 @@ public class SplitAttributes {
     @ExtLayoutDirection
     private final int mLayoutDirection;
 
-    @NonNull
-    private final SplitType mSplitType;
+    private final @NonNull SplitType mSplitType;
 
-    @NonNull
-    private final AnimationBackground mAnimationBackground;
+    private final @NonNull AnimationBackground mAnimationBackground;
 
-    @NonNull
-    private final WindowAttributes mWindowAttributes;
+    private final @NonNull WindowAttributes mWindowAttributes;
+
+    /** The attributes of a divider. If {@code null}, no divider is requested. */
+    private final @Nullable DividerAttributes mDividerAttributes;
 
     /**
      * Creates an instance of this {@code SplitAttributes}.
@@ -396,17 +391,21 @@ public class SplitAttributes {
      *                            animation requires a background.
      * @param attributes          The {@link WindowAttributes} of the split, such as dim area
      *                            behavior.
+     * @param dividerAttributes   The {@link DividerAttributes}. If {@code null}, no divider is
+     *                            requested.
      */
     SplitAttributes(
             @NonNull SplitType splitType,
             @ExtLayoutDirection int layoutDirection,
             @NonNull AnimationBackground animationBackground,
-            @NonNull WindowAttributes attributes
+            @NonNull WindowAttributes attributes,
+            @Nullable DividerAttributes dividerAttributes
     ) {
         mSplitType = splitType;
         mLayoutDirection = layoutDirection;
         mAnimationBackground = animationBackground;
         mWindowAttributes = attributes;
+        mDividerAttributes = dividerAttributes;
     }
 
     /**
@@ -424,8 +423,7 @@ public class SplitAttributes {
      *
      * @return The split type.
      */
-    @NonNull
-    public SplitType getSplitType() {
+    public @NonNull SplitType getSplitType() {
         return mSplitType;
     }
 
@@ -433,9 +431,8 @@ public class SplitAttributes {
      * Returns the {@link AnimationBackground} to use for the background during the
      * animation of the split involving this {@code SplitAttributes} object.
      */
-    @NonNull
     @RequiresVendorApiLevel(level = 5)
-    public AnimationBackground getAnimationBackground() {
+    public @NonNull AnimationBackground getAnimationBackground() {
         return mAnimationBackground;
     }
 
@@ -443,10 +440,15 @@ public class SplitAttributes {
      * Returns the {@link WindowAttributes} which contains the configurations of the embedded
      * Activity windows in this SplitAttributes.
      */
-    @NonNull
     @RequiresVendorApiLevel(level = 5)
-    public WindowAttributes getWindowAttributes() {
+    public @NonNull WindowAttributes getWindowAttributes() {
         return mWindowAttributes;
+    }
+
+    /** Returns the {@link DividerAttributes}. If {@code null}, no divider is requested. */
+    @RequiresVendorApiLevel(level = 6)
+    public @Nullable DividerAttributes getDividerAttributes() {
+        return mDividerAttributes;
     }
 
     /**
@@ -457,21 +459,34 @@ public class SplitAttributes {
      * - The default animation background is to use the current theme window background color.
      */
     public static final class Builder {
-        @NonNull
-        private SplitType mSplitType = new SplitType.RatioSplitType(0.5f);
+        private @NonNull SplitType mSplitType = new SplitType.RatioSplitType(0.5f);
         @ExtLayoutDirection
         private int mLayoutDirection = LOCALE;
 
-        @NonNull
-        private AnimationBackground mAnimationBackground =
+        private @NonNull AnimationBackground mAnimationBackground =
                 AnimationBackground.ANIMATION_BACKGROUND_DEFAULT;
 
-        @NonNull
-        private WindowAttributes mWindowAttributes =
+        private @NonNull WindowAttributes mWindowAttributes =
                 new WindowAttributes(DIM_AREA_ON_TASK);
+
+        private @Nullable DividerAttributes mDividerAttributes;
 
         /** Creates a new {@link Builder} to create {@link SplitAttributes}. */
         public Builder() {
+        }
+
+        /**
+         * Creates a {@link Builder} with values cloned from the original {@link SplitAttributes}.
+         *
+         * @param original the original {@link SplitAttributes} to initialize the {@link Builder}.
+         */
+        @RequiresVendorApiLevel(level = 6)
+        public Builder(@NonNull SplitAttributes original) {
+            mSplitType = original.mSplitType;
+            mLayoutDirection = original.mLayoutDirection;
+            mAnimationBackground = original.mAnimationBackground;
+            mWindowAttributes = original.mWindowAttributes;
+            mDividerAttributes = original.mDividerAttributes;
         }
 
         /**
@@ -483,8 +498,7 @@ public class SplitAttributes {
          * @param splitType The split type attribute.
          * @return This {@code Builder}.
          */
-        @NonNull
-        public Builder setSplitType(@NonNull SplitType splitType) {
+        public @NonNull Builder setSplitType(@NonNull SplitType splitType) {
             mSplitType = splitType;
             return this;
         }
@@ -507,8 +521,7 @@ public class SplitAttributes {
          * @return This {@code Builder}.
          */
         @SuppressLint("WrongConstant") // To be compat with android.util.LayoutDirection APIs
-        @NonNull
-        public Builder setLayoutDirection(@ExtLayoutDirection int layoutDirection) {
+        public @NonNull Builder setLayoutDirection(@ExtLayoutDirection int layoutDirection) {
             mLayoutDirection = layoutDirection;
             return this;
         }
@@ -525,9 +538,8 @@ public class SplitAttributes {
          *                   split.
          * @return This {@code Builder}.
          */
-        @NonNull
         @RequiresVendorApiLevel(level = 5)
-        public Builder setAnimationBackground(@NonNull AnimationBackground background) {
+        public @NonNull Builder setAnimationBackground(@NonNull AnimationBackground background) {
             mAnimationBackground = background;
             return this;
         }
@@ -540,10 +552,17 @@ public class SplitAttributes {
          * @param attributes The {@link WindowAttributes}
          * @return This {@code Builder}.
          */
-        @NonNull
         @RequiresVendorApiLevel(level = 5)
-        public Builder setWindowAttributes(@NonNull WindowAttributes attributes) {
+        public @NonNull Builder setWindowAttributes(@NonNull WindowAttributes attributes) {
             mWindowAttributes = attributes;
+            return this;
+        }
+
+        /** Sets the {@link DividerAttributes}. If {@code null}, no divider is requested. */
+        @RequiresVendorApiLevel(level = 6)
+        public @NonNull Builder setDividerAttributes(
+                @Nullable DividerAttributes dividerAttributes) {
+            mDividerAttributes = dividerAttributes;
             return this;
         }
 
@@ -554,10 +573,9 @@ public class SplitAttributes {
          *
          * @return The new {@code SplitAttributes} instance.
          */
-        @NonNull
-        public SplitAttributes build() {
+        public @NonNull SplitAttributes build() {
             return new SplitAttributes(mSplitType, mLayoutDirection, mAnimationBackground,
-                    mWindowAttributes);
+                    mWindowAttributes, mDividerAttributes);
         }
     }
 
@@ -568,27 +586,28 @@ public class SplitAttributes {
         SplitAttributes that = (SplitAttributes) o;
         return mLayoutDirection == that.mLayoutDirection && mSplitType.equals(that.mSplitType)
                 && mAnimationBackground.equals(that.mAnimationBackground)
-                && mWindowAttributes.equals(that.mWindowAttributes);
+                && mWindowAttributes.equals(that.mWindowAttributes)
+                && Objects.equals(mDividerAttributes, that.mDividerAttributes);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mLayoutDirection, mSplitType, mAnimationBackground, mWindowAttributes);
+        return Objects.hash(mLayoutDirection, mSplitType, mAnimationBackground, mWindowAttributes,
+                mDividerAttributes);
     }
 
-    @NonNull
     @Override
-    public String toString() {
+    public @NonNull String toString() {
         return SplitAttributes.class.getSimpleName() + "{"
                 + "layoutDir=" + layoutDirectionToString()
                 + ", splitType=" + mSplitType
                 + ", animationBackground=" + mAnimationBackground
                 + ", windowAttributes=" + mWindowAttributes
+                + ", dividerAttributes=" + mDividerAttributes
                 + "}";
     }
 
-    @NonNull
-    private String layoutDirectionToString() {
+    private @NonNull String layoutDirectionToString() {
         switch (mLayoutDirection) {
             case LEFT_TO_RIGHT:
                 return "LEFT_TO_RIGHT";

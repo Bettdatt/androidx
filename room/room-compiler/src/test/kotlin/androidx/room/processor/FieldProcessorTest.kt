@@ -24,6 +24,7 @@ import androidx.room.compiler.processing.XTypeElement
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.XTestInvocation
 import androidx.room.compiler.processing.util.runProcessorTest
+import androidx.room.ext.CommonTypeNames
 import androidx.room.parser.Collate
 import androidx.room.parser.SQLTypeAffinity
 import androidx.room.solver.types.ColumnTypeAdapter
@@ -246,7 +247,7 @@ class FieldProcessorTest {
                 )
             )
             assertThat(
-                (field.cursorValueReader as? ColumnTypeAdapter)?.typeAffinity,
+                (field.statementValueReader as? ColumnTypeAdapter)?.typeAffinity,
                 `is`(SQLTypeAffinity.TEXT)
             )
         }
@@ -308,12 +309,16 @@ class FieldProcessorTest {
                         )
                     )
                 )
+                val elementType =
+                    if (invocation.isKsp2) {
+                        // Java Array has a covariant upper bound in KSP2.
+                        XTypeName.getProducerExtendsName(boxedPrimitive.copy(nullable = true))
+                    } else {
+                        boxedPrimitive.copy(nullable = true)
+                    }
                 assertThat(
                     field.type.asTypeName(),
-                    `is`(
-                        XTypeName.getArrayName(boxedPrimitive.copy(nullable = true))
-                            .copy(nullable = true)
-                    )
+                    `is`(XTypeName.getArrayName(elementType).copy(nullable = true))
                 )
             }
         }
@@ -600,7 +605,10 @@ class FieldProcessorTest {
                     `is`(
                         Field(
                             name = "code",
-                            type = invocation.context.COMMON_TYPES.STRING.makeNullable(),
+                            type =
+                                invocation.context.processingEnv
+                                    .requireType(CommonTypeNames.STRING)
+                                    .makeNullable(),
                             element = field.element,
                             columnName = "code",
                             collate = collate,

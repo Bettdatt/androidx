@@ -47,11 +47,12 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
+import androidx.wear.compose.foundation.ScrollInfoProvider
+import androidx.wear.compose.foundation.curvedComposable
 import androidx.wear.compose.foundation.lazy.AutoCenteringParams
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListState
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
-import androidx.wear.compose.foundation.toScrollAwayInfoProvider
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -199,7 +200,7 @@ class ScrollAwayTest {
                 TimeText(
                     modifier =
                         Modifier.scrollAway(
-                                scrollInfoProvider = scrollState.toScrollAwayInfoProvider(),
+                                scrollInfoProvider = ScrollInfoProvider(scrollState),
                                 screenStage = {
                                     if (scrollState.isScrollInProgress) ScreenStage.Scrolling
                                     else ScreenStage.Idle
@@ -207,7 +208,7 @@ class ScrollAwayTest {
                             )
                             .testTag(TIME_TEXT_TAG),
                 ) {
-                    composable { Box(Modifier.size(20.dp).background(timeTextColor)) }
+                    curvedComposable { Box(Modifier.size(20.dp).background(timeTextColor)) }
                 }
             }
         }
@@ -225,7 +226,7 @@ class ScrollAwayTest {
                 TimeText(
                     modifier =
                         Modifier.scrollAway(
-                                scrollInfoProvider = scrollState.toScrollAwayInfoProvider(),
+                                scrollInfoProvider = ScrollInfoProvider(scrollState),
                                 screenStage = {
                                     if (scrollState.isScrollInProgress) ScreenStage.Scrolling
                                     else ScreenStage.Idle
@@ -233,7 +234,7 @@ class ScrollAwayTest {
                             )
                             .testTag(TIME_TEXT_TAG)
                 ) {
-                    composable { Box(Modifier.size(20.dp).background(timeTextColor)) }
+                    curvedComposable { Box(Modifier.size(20.dp).background(timeTextColor)) }
                 }
                 LazyColumn(state = scrollState, modifier = Modifier.testTag(SCROLL_TAG)) {
                     item { ListHeader { Text("Buttons") } }
@@ -253,10 +254,9 @@ class ScrollAwayTest {
                         .testTag(TEST_TAG)
             ) {
                 TimeText(
-                    contentColor = timeTextColor,
                     modifier =
                         Modifier.scrollAway(
-                                scrollInfoProvider = scrollState.toScrollAwayInfoProvider(),
+                                scrollInfoProvider = ScrollInfoProvider(scrollState),
                                 screenStage = {
                                     if (scrollState.isScrollInProgress) ScreenStage.Scrolling
                                     else ScreenStage.Idle
@@ -264,7 +264,7 @@ class ScrollAwayTest {
                             )
                             .testTag(TIME_TEXT_TAG)
                 ) {
-                    composable { Box(Modifier.size(20.dp).background(timeTextColor)) }
+                    curvedComposable { Box(Modifier.size(20.dp).background(timeTextColor)) }
                 }
                 Column(modifier = Modifier.verticalScroll(scrollState).testTag(SCROLL_TAG)) {
                     ListHeader { Text("Buttons") }

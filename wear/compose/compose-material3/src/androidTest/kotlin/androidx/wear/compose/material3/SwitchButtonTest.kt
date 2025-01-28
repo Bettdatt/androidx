@@ -436,8 +436,10 @@ class SwitchButtonTest {
             SwitchButtonWithDefaults(
                 checked = true,
                 onCheckedChange = {},
-                label = { labelTextAlign = LocalTextAlign.current },
-                secondaryLabel = { secondaryLabelTextAlign = LocalTextAlign.current },
+                label = { labelTextAlign = LocalTextConfiguration.current.textAlign },
+                secondaryLabel = {
+                    secondaryLabelTextAlign = LocalTextConfiguration.current.textAlign
+                },
             )
         }
 
@@ -454,8 +456,10 @@ class SwitchButtonTest {
             SplitSwitchButtonWithDefaults(
                 checked = true,
                 onCheckedChange = {},
-                label = { labelTextAlign = LocalTextAlign.current },
-                secondaryLabel = { secondaryLabelTextAlign = LocalTextAlign.current },
+                label = { labelTextAlign = LocalTextConfiguration.current.textAlign },
+                secondaryLabel = {
+                    secondaryLabelTextAlign = LocalTextConfiguration.current.textAlign
+                },
             )
         }
 
@@ -472,8 +476,10 @@ class SwitchButtonTest {
             SwitchButtonWithDefaults(
                 checked = true,
                 onCheckedChange = {},
-                label = { labelOverflow = LocalTextOverflow.current },
-                secondaryLabel = { secondaryLabelOverflow = LocalTextOverflow.current },
+                label = { labelOverflow = LocalTextConfiguration.current.overflow },
+                secondaryLabel = {
+                    secondaryLabelOverflow = LocalTextConfiguration.current.overflow
+                },
             )
         }
 
@@ -490,8 +496,10 @@ class SwitchButtonTest {
             SplitSwitchButtonWithDefaults(
                 checked = true,
                 onCheckedChange = {},
-                label = { labelOverflow = LocalTextOverflow.current },
-                secondaryLabel = { secondaryLabelOverflow = LocalTextOverflow.current },
+                label = { labelOverflow = LocalTextConfiguration.current.overflow },
+                secondaryLabel = {
+                    secondaryLabelOverflow = LocalTextConfiguration.current.overflow
+                },
             )
         }
 
@@ -508,8 +516,10 @@ class SwitchButtonTest {
             SwitchButtonWithDefaults(
                 checked = true,
                 onCheckedChange = {},
-                label = { labelMaxLines = LocalTextMaxLines.current },
-                secondaryLabel = { secondaryLabelMaxLines = LocalTextMaxLines.current },
+                label = { labelMaxLines = LocalTextConfiguration.current.maxLines },
+                secondaryLabel = {
+                    secondaryLabelMaxLines = LocalTextConfiguration.current.maxLines
+                },
             )
         }
 
@@ -526,8 +536,10 @@ class SwitchButtonTest {
             SplitSwitchButtonWithDefaults(
                 checked = true,
                 onCheckedChange = {},
-                label = { labelMaxLines = LocalTextMaxLines.current },
-                secondaryLabel = { secondaryLabelMaxLines = LocalTextMaxLines.current },
+                label = { labelMaxLines = LocalTextConfiguration.current.maxLines },
+                secondaryLabel = {
+                    secondaryLabelMaxLines = LocalTextConfiguration.current.maxLines
+                },
             )
         }
 
@@ -875,14 +887,10 @@ private fun ComposeContentTestRule.verifySplitToggleButtonColors(
     var actualSecondaryLabelColor = Color.Transparent
     setContentWithTheme {
         expectedContainerColor =
-            split_switch_button_container_color(checked)
-                .withDisabledAlphaApplied(enabled = enabled)
-                .compositeOver(testBackgroundColor)
+            split_switch_button_container_color(checked, enabled).compositeOver(testBackgroundColor)
         expectedLabelColor =
             split_switch_button_content_color(checked).withDisabledAlphaApplied(enabled = enabled)
-        expectedSecondaryLabelColor =
-            split_switch_button_secondary_label_color(checked)
-                .withDisabledAlphaApplied(enabled = enabled)
+        expectedSecondaryLabelColor = split_switch_button_secondary_label_color(checked, enabled)
         Box(Modifier.fillMaxSize().background(testBackgroundColor)) {
             SplitSwitchButton(
                 modifier = Modifier.testTag(TEST_TAG),
@@ -926,7 +934,7 @@ private fun switch_button_content_color(checked: Boolean, enabled: Boolean): Col
 
 @Composable
 private fun switch_button_secondary_label_color(checked: Boolean, enabled: Boolean): Color {
-    return if (checked && enabled) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+    return if (checked && enabled) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
     else if (!checked && enabled) MaterialTheme.colorScheme.onSurfaceVariant
     else MaterialTheme.colorScheme.onSurface.toDisabledColor(disabledAlpha = 0.38f)
 }
@@ -938,8 +946,9 @@ private fun switch_button_icon_color(enabled: Boolean): Color {
 }
 
 @Composable
-private fun split_switch_button_container_color(checked: Boolean): Color {
-    return if (checked) MaterialTheme.colorScheme.primaryContainer
+private fun split_switch_button_container_color(checked: Boolean, enabled: Boolean): Color {
+    return if (!enabled) MaterialTheme.colorScheme.onSurface.toDisabledColor(disabledAlpha = 0.12f)
+    else if (checked) MaterialTheme.colorScheme.primaryContainer
     else MaterialTheme.colorScheme.surfaceContainer
 }
 
@@ -950,8 +959,9 @@ private fun split_switch_button_content_color(checked: Boolean): Color {
 }
 
 @Composable
-private fun split_switch_button_secondary_label_color(checked: Boolean): Color {
-    return if (checked) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+private fun split_switch_button_secondary_label_color(checked: Boolean, enabled: Boolean): Color {
+    return if (!enabled) MaterialTheme.colorScheme.onSurface.toDisabledColor(disabledAlpha = 0.38f)
+    else if (checked) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
     else MaterialTheme.colorScheme.onSurfaceVariant
 }
 

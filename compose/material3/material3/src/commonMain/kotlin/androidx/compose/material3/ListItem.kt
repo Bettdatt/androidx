@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.internal.ProvideContentColorTextStyle
 import androidx.compose.material3.internal.heightOrZero
+import androidx.compose.material3.internal.subtractConstraintSafely
 import androidx.compose.material3.internal.widthOrZero
 import androidx.compose.material3.tokens.ListTokens
 import androidx.compose.material3.tokens.TypographyKeyTokens
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
+import kotlin.jvm.JvmInline
 import kotlin.math.max
 
 /**
@@ -249,13 +251,13 @@ private class ListItemMeasurePolicy : MultiContentMeasurePolicy {
             )
 
         val leadingPlaceable = leadingMeasurable.firstOrNull()?.measure(paddedLooseConstraints)
-        currentTotalWidth += widthOrZero(leadingPlaceable)
+        currentTotalWidth += leadingPlaceable.widthOrZero
 
         val trailingPlaceable =
             trailingMeasurable
                 .firstOrNull()
                 ?.measure(paddedLooseConstraints.offset(horizontal = -currentTotalWidth))
-        currentTotalWidth += widthOrZero(trailingPlaceable)
+        currentTotalWidth += trailingPlaceable.widthOrZero
 
         var currentTotalHeight = 0
 
@@ -263,7 +265,7 @@ private class ListItemMeasurePolicy : MultiContentMeasurePolicy {
             headlineMeasurable
                 .firstOrNull()
                 ?.measure(paddedLooseConstraints.offset(horizontal = -currentTotalWidth))
-        currentTotalHeight += heightOrZero(headlinePlaceable)
+        currentTotalHeight += headlinePlaceable.heightOrZero
 
         val supportingPlaceable =
             supportingMeasurable
@@ -274,7 +276,7 @@ private class ListItemMeasurePolicy : MultiContentMeasurePolicy {
                         vertical = -currentTotalHeight
                     )
                 )
-        currentTotalHeight += heightOrZero(supportingPlaceable)
+        currentTotalHeight += supportingPlaceable.heightOrZero
         val isSupportingMultiline =
             supportingPlaceable != null &&
                 (supportingPlaceable[FirstBaseline] != supportingPlaceable[LastBaseline])
@@ -300,21 +302,21 @@ private class ListItemMeasurePolicy : MultiContentMeasurePolicy {
 
         val width =
             calculateWidth(
-                leadingWidth = widthOrZero(leadingPlaceable),
-                trailingWidth = widthOrZero(trailingPlaceable),
-                headlineWidth = widthOrZero(headlinePlaceable),
-                overlineWidth = widthOrZero(overlinePlaceable),
-                supportingWidth = widthOrZero(supportingPlaceable),
+                leadingWidth = leadingPlaceable.widthOrZero,
+                trailingWidth = trailingPlaceable.widthOrZero,
+                headlineWidth = headlinePlaceable.widthOrZero,
+                overlineWidth = overlinePlaceable.widthOrZero,
+                supportingWidth = supportingPlaceable.widthOrZero,
                 horizontalPadding = horizontalPadding,
                 constraints = constraints,
             )
         val height =
             calculateHeight(
-                leadingHeight = heightOrZero(leadingPlaceable),
-                trailingHeight = heightOrZero(trailingPlaceable),
-                headlineHeight = heightOrZero(headlinePlaceable),
-                overlineHeight = heightOrZero(overlinePlaceable),
-                supportingHeight = heightOrZero(supportingPlaceable),
+                leadingHeight = leadingPlaceable.heightOrZero,
+                trailingHeight = trailingPlaceable.heightOrZero,
+                headlineHeight = headlinePlaceable.heightOrZero,
+                overlineHeight = overlinePlaceable.heightOrZero,
+                supportingHeight = supportingPlaceable.heightOrZero,
                 listItemType = listItemType,
                 verticalPadding = verticalPadding.roundToPx(),
                 constraints = constraints,
@@ -496,33 +498,34 @@ private fun MeasureScope.place(
                 y = if (isThreeLine) topPadding else CenterVertically.align(it.height, height)
             )
         }
+
+        val mainContentX = startPadding + leadingPlaceable.widthOrZero
+        val mainContentY =
+            if (isThreeLine) {
+                topPadding
+            } else {
+                val totalHeight =
+                    headlinePlaceable.heightOrZero +
+                        overlinePlaceable.heightOrZero +
+                        supportingPlaceable.heightOrZero
+                CenterVertically.align(totalHeight, height)
+            }
+        var currentY = mainContentY
+
+        overlinePlaceable?.placeRelative(mainContentX, currentY)
+        currentY += overlinePlaceable.heightOrZero
+
+        headlinePlaceable?.placeRelative(mainContentX, currentY)
+        currentY += headlinePlaceable.heightOrZero
+
+        supportingPlaceable?.placeRelative(mainContentX, currentY)
+
         trailingPlaceable?.let {
             it.placeRelative(
                 x = width - endPadding - it.width,
                 y = if (isThreeLine) topPadding else CenterVertically.align(it.height, height)
             )
         }
-
-        val mainContentX = startPadding + widthOrZero(leadingPlaceable)
-        val mainContentY =
-            if (isThreeLine) {
-                topPadding
-            } else {
-                val totalHeight =
-                    heightOrZero(headlinePlaceable) +
-                        heightOrZero(overlinePlaceable) +
-                        heightOrZero(supportingPlaceable)
-                CenterVertically.align(totalHeight, height)
-            }
-        var currentY = mainContentY
-
-        overlinePlaceable?.placeRelative(mainContentX, currentY)
-        currentY += heightOrZero(overlinePlaceable)
-
-        headlinePlaceable?.placeRelative(mainContentX, currentY)
-        currentY += heightOrZero(headlinePlaceable)
-
-        supportingPlaceable?.placeRelative(mainContentX, currentY)
     }
 }
 
@@ -730,7 +733,7 @@ private value class ListItemType private constructor(private val lines: Int) :
         internal operator fun invoke(
             hasOverline: Boolean,
             hasSupporting: Boolean,
-            isSupportingMultiline: Boolean
+            isSupportingMultiline: Boolean,
         ): ListItemType {
             return when {
                 (hasOverline && hasSupporting) || isSupportingMultiline -> ThreeLine
@@ -769,10 +772,3 @@ private fun verticalPadding(listItemType: ListItemType): Dp =
         ListItemType.ThreeLine -> ListItemThreeLineVerticalPadding
         else -> ListItemVerticalPadding
     }
-
-private fun Int.subtractConstraintSafely(n: Int): Int {
-    if (this == Constraints.Infinity) {
-        return this
-    }
-    return this - n
-}

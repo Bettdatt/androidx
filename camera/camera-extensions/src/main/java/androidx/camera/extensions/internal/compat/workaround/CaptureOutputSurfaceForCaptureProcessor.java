@@ -23,9 +23,7 @@ import android.os.Build;
 import android.util.Size;
 import android.view.Surface;
 
-import androidx.annotation.DoNotInline;
 import androidx.annotation.GuardedBy;
-import androidx.annotation.NonNull;
 import androidx.annotation.OptIn;
 import androidx.annotation.RequiresApi;
 import androidx.camera.core.ExperimentalGetImage;
@@ -36,6 +34,8 @@ import androidx.camera.core.impl.ImageReaderProxy;
 import androidx.camera.core.impl.utils.executor.CameraXExecutors;
 import androidx.camera.extensions.internal.compat.quirk.CaptureOutputSurfaceOccupiedQuirk;
 import androidx.camera.extensions.internal.compat.quirk.DeviceQuirks;
+
+import org.jspecify.annotations.NonNull;
 
 /**
  * A workaround for 2 purposes:
@@ -66,8 +66,7 @@ public class CaptureOutputSurfaceForCaptureProcessor {
     private final ImageReaderProxy mIntermediateImageReader;
     @GuardedBy("mLock")
     private boolean mIsClosed = false;
-    @NonNull
-    private final Surface mOutputSurface;
+    private final @NonNull Surface mOutputSurface;
     private final boolean mNeedIntermediaSurface;
     private final boolean mNeedOverrideTimestamp;
     long mOutputImageTimeStamp = UNSPECIFIED_TIMESTAMP;
@@ -124,8 +123,7 @@ public class CaptureOutputSurfaceForCaptureProcessor {
      * Returns the output surface that is supported to pass to
      * {@link androidx.camera.extensions.impl.CaptureProcessorImpl#onOutputSurface(Surface, int)}.
      */
-    @NonNull
-    public Surface getSurface() {
+    public @NonNull Surface getSurface() {
         return mOutputSurface;
     }
 
@@ -151,9 +149,8 @@ public class CaptureOutputSurfaceForCaptureProcessor {
         /**
          * Creates a {@link ImageWriter} instance.
          */
-        @NonNull
-        @DoNotInline
-        static ImageWriter newInstance(@NonNull Surface surface, int maxImages, int imageFormat) {
+        static @NonNull ImageWriter newInstance(@NonNull Surface surface, int maxImages,
+                int imageFormat) {
             return ImageWriter.newInstance(surface, maxImages, imageFormat);
         }
 
@@ -161,7 +158,6 @@ public class CaptureOutputSurfaceForCaptureProcessor {
             imageWriter.queueInputImage(image);
         }
 
-        @DoNotInline
         static void close(ImageWriter imageWriter) {
             imageWriter.close();
         }

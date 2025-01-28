@@ -42,7 +42,7 @@ internal val cameraAdapterIds = atomic(0)
 
 /** Adapt the [CameraInternal] class to one or more [CameraPipe] based Camera instances. */
 @CameraScope
-class CameraInternalAdapter
+public class CameraInternalAdapter
 @Inject
 constructor(
     config: CameraConfig,
@@ -57,7 +57,6 @@ constructor(
         CameraConfigs.defaultConfig()
     private val debugId = cameraAdapterIds.incrementAndGet()
     private var sessionProcessor: SessionProcessor? = null
-    private var isPrimary = true
 
     init {
         debug { "Created $this for $cameraId" }
@@ -85,7 +84,7 @@ constructor(
     }
 
     override fun setPrimary(isPrimary: Boolean) {
-        this.isPrimary = isPrimary
+        useCaseManager.setPrimary(isPrimary)
     }
 
     override fun setActiveResumingMode(enabled: Boolean) {
@@ -142,5 +141,5 @@ constructor(
         useCaseManager.sessionProcessor = sessionProcessor
     }
 
-    override fun toString(): String = "CameraInternalAdapter<$cameraId>"
+    override fun toString(): String = "CameraInternalAdapter<$cameraId($debugId)>"
 }

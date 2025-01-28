@@ -19,8 +19,6 @@ package androidx.compose.foundation
 import androidx.compose.foundation.interaction.FocusInteraction
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.relocation.findBringIntoViewParent
-import androidx.compose.foundation.relocation.scrollIntoView
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusState
@@ -40,8 +38,8 @@ import androidx.compose.ui.node.currentValueOf
 import androidx.compose.ui.node.findNearestAncestor
 import androidx.compose.ui.node.invalidateSemantics
 import androidx.compose.ui.node.observeReads
-import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.relocation.bringIntoView
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.focused
 import androidx.compose.ui.semantics.requestFocus
@@ -148,7 +146,7 @@ private class FocusableElement(private val interactionSource: MutableInteraction
 internal class FocusableNode(
     private var interactionSource: MutableInteractionSource?,
     focusability: Focusability = Focusability.Always,
-    private val onFocus: (() -> Unit)? = null
+    private val onFocusChange: ((Boolean) -> Unit)? = null
 ) :
     DelegatingNode(),
     SemanticsModifierNode,
@@ -211,13 +209,9 @@ internal class FocusableNode(
         // Ignore cases where we are initialized as unfocused, or moving between different unfocused
         // states, such as Inactive -> ActiveParent.
         if (isFocused == wasFocused) return
+        onFocusChange?.invoke(isFocused)
         if (isFocused) {
-            onFocus?.invoke()
-            val parent = findBringIntoViewParent()
-            if (parent != null) {
-                val layoutCoordinates = requireLayoutCoordinates()
-                coroutineScope.launch { parent.scrollIntoView(layoutCoordinates) }
-            }
+            coroutineScope.launch { bringIntoView() }
             val pinnableContainer = retrievePinnableContainer()
             pinnedHandle = pinnableContainer?.pin()
             notifyObserverWhenAttached()

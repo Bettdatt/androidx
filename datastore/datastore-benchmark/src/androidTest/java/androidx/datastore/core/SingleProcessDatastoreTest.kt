@@ -21,8 +21,13 @@ import androidx.benchmark.junit4.measureRepeated
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.filters.MediumTest
+import java.io.File
+import kotlin.test.assertEquals
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
@@ -68,6 +73,39 @@ class SingleProcessDatastoreTest {
                 }
             }
         }
+
+    @Test
+    @MediumTest
+    fun coldRead() {
+        lateinit var store: DataStore<Byte>
+        lateinit var dataFile: File
+        lateinit var job: Job
+
+        suspend fun reinitDataStore() {
+            job = Job()
+            dataFile = tmp.newFile()
+            dataFile.writeBytes(byteArrayOf(1))
+            store =
+                DataStoreFactory.create(
+                    serializer = TestingSerializer(),
+                    scope = CoroutineScope(job),
+                    produceFile = { dataFile }
+                )
+        }
+
+        runBlocking { reinitDataStore() }
+        benchmark.measureRepeated {
+            runBlocking {
+                val result = store.data.first()
+
+                runWithTimingDisabled {
+                    assertEquals(1, result)
+                    job.cancelAndJoin()
+                    reinitDataStore()
+                }
+            }
+        }
+    }
 
     @Test
     @MediumTest

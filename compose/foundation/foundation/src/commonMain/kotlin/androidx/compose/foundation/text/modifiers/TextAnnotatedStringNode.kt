@@ -17,6 +17,7 @@
 package androidx.compose.foundation.text.modifiers
 
 import androidx.compose.foundation.text.DefaultMinLines
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -78,8 +79,12 @@ internal class TextAnnotatedStringNode(
     private var onPlaceholderLayout: ((List<Rect?>) -> Unit)? = null,
     private var selectionController: SelectionController? = null,
     private var overrideColor: ColorProducer? = null,
+    private var autoSize: TextAutoSize? = null,
     private var onShowTranslation: ((TextSubstitutionValue) -> Unit)? = null
 ) : Modifier.Node(), LayoutModifierNode, DrawModifierNode, SemanticsModifierNode {
+    override val shouldAutoInvalidate: Boolean
+        get() = false
+
     @Suppress("PrimitiveInCollection")
     private var baselineCache: MutableMap<AlignmentLine, Int>? = null
 
@@ -96,7 +101,8 @@ internal class TextAnnotatedStringNode(
                         softWrap,
                         maxLines,
                         minLines,
-                        placeholders
+                        placeholders,
+                        autoSize
                     )
             }
             return _layoutCache!!
@@ -153,7 +159,8 @@ internal class TextAnnotatedStringNode(
         maxLines: Int,
         softWrap: Boolean,
         fontFamilyResolver: FontFamily.Resolver,
-        overflow: TextOverflow
+        overflow: TextOverflow,
+        autoSize: TextAutoSize?
     ): Boolean {
         var changed: Boolean
 
@@ -187,6 +194,11 @@ internal class TextAnnotatedStringNode(
 
         if (this.overflow != overflow) {
             this.overflow = overflow
+            changed = true
+        }
+
+        if (this.autoSize != autoSize) {
+            this.autoSize = autoSize
             changed = true
         }
 
@@ -241,7 +253,8 @@ internal class TextAnnotatedStringNode(
                 softWrap = softWrap,
                 maxLines = maxLines,
                 minLines = minLines,
-                placeholders = placeholders
+                placeholders = placeholders,
+                autoSize = autoSize
             )
         }
 
@@ -276,6 +289,9 @@ internal class TextAnnotatedStringNode(
 
     private fun setSubstitution(updatedText: AnnotatedString): Boolean {
         val currentTextSubstitution = textSubstitution
+        // updatedText is currently always returned as a plain text so we ignore inline content
+        // which is represented by placeholders. If translation ever supports annotations, we
+        // would need to recalculate the placeholders
         if (currentTextSubstitution != null) {
             if (updatedText == currentTextSubstitution.substitution) {
                 return false
@@ -289,7 +305,8 @@ internal class TextAnnotatedStringNode(
                 softWrap,
                 maxLines,
                 minLines,
-                placeholders
+                placeholders = emptyList(),
+                autoSize
             ) ?: return false
         } else {
             val newTextSubstitution = TextSubstitutionValue(text, updatedText)
@@ -302,7 +319,8 @@ internal class TextAnnotatedStringNode(
                     softWrap,
                     maxLines,
                     minLines,
-                    placeholders
+                    placeholders = emptyList(),
+                    autoSize
                 )
             substitutionLayoutCache.density = layoutCache.density
             newTextSubstitution.layoutCache = substitutionLayoutCache
@@ -388,9 +406,6 @@ internal class TextAnnotatedStringNode(
         }
         getTextLayoutResult(action = localSemanticsTextLayoutResult)
     }
-
-    override val shouldClearDescendantSemantics: Boolean
-        get() = true
 
     fun measureNonExtension(
         measureScope: MeasureScope,

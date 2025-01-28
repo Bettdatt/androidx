@@ -17,13 +17,6 @@
 package androidx.compose.foundation.lazy
 
 import androidx.annotation.IntRange as AndroidXIntRange
-import androidx.compose.animation.core.AnimationState
-import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.animateTo
-import androidx.compose.animation.core.copy
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.Orientation
@@ -31,12 +24,14 @@ import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.internal.checkPrecondition
 import androidx.compose.foundation.lazy.LazyListState.Companion.Saver
 import androidx.compose.foundation.lazy.layout.AwaitFirstLayoutModifier
 import androidx.compose.foundation.lazy.layout.LazyLayoutBeyondBoundsInfo
 import androidx.compose.foundation.lazy.layout.LazyLayoutItemAnimator
 import androidx.compose.foundation.lazy.layout.LazyLayoutPinnedItemList
 import androidx.compose.foundation.lazy.layout.LazyLayoutPrefetchState
+import androidx.compose.foundation.lazy.layout.LazyLayoutScrollDeltaBetweenPasses
 import androidx.compose.foundation.lazy.layout.ObservableScopeInvalidator
 import androidx.compose.foundation.lazy.layout.animateScrollToItem
 import androidx.compose.runtime.Composable
@@ -56,7 +51,6 @@ import androidx.compose.ui.layout.Remeasurement
 import androidx.compose.ui.layout.RemeasurementModifier
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastRoundToInt
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.abs
@@ -143,10 +137,10 @@ constructor(
         firstVisibleItemScrollOffset: Int = 0
     ) : this(firstVisibleItemIndex, firstVisibleItemScrollOffset, LazyListPrefetchStrategy())
 
-    internal var hasLookaheadPassOccurred: Boolean = false
+    internal var hasLookaheadOccurred: Boolean = false
         private set
 
-    internal var postLookaheadLayoutInfo: LazyListMeasureResult? = null
+    internal var approachLayoutInfo: LazyListMeasureResult? = null
         private set
 
     /** The holder class for the current scroll position. */
@@ -154,7 +148,9 @@ constructor(
         LazyListScrollPosition(firstVisibleItemIndex, firstVisibleItemScrollOffset)
 
     /**
-     * The index of the first item that is visible.
+     * The index of the first item that is visible within the scrollable viewport area not including
+     * items in the content padding region. For the first visible item that includes items in the
+     * content padding please use [LazyListLayoutInfo.visibleItemsInfo].
      *
      * Note that this property is observable and if you use it in the composable function it will be
      * recomposed on every change causing potential performance issues.
@@ -283,8 +279,6 @@ constructor(
             }
         }
 
-    private val animatedScrollScope = LazyLayoutAnimateScrollScope(this)
-
     /** Stores currently pinned items which are always composed. */
     internal val pinnedItems = LazyLayoutPinnedItemList()
 
@@ -400,8 +394,8 @@ constructor(
         if (distance < 0 && !canScrollForward || distance > 0 && !canScrollBackward) {
             return 0f
         }
-        check(abs(scrollToBeConsumed) <= 0.5f) {
-            "entered drag with non-zero pending scroll: $scrollToBeConsumed"
+        checkPrecondition(abs(scrollToBeConsumed) <= 0.5f) {
+            "entered drag with non-zero pending scroll"
         }
         scrollToBeConsumed += distance
 
@@ -415,21 +409,21 @@ constructor(
             var scrolledLayoutInfo =
                 layoutInfoState.value.copyWithScrollDeltaWithoutRemeasure(
                     delta = intDelta,
-                    updateAnimations = !hasLookaheadPassOccurred
+                    updateAnimations = !hasLookaheadOccurred
                 )
-            if (scrolledLayoutInfo != null && this.postLookaheadLayoutInfo != null) {
+            if (scrolledLayoutInfo != null && this.approachLayoutInfo != null) {
                 // if we were able to scroll the lookahead layout info without remeasure, lets
-                // try to do the same for post lookahead layout info (sometimes they diverge).
-                val scrolledPostLookaheadLayoutInfo =
-                    postLookaheadLayoutInfo?.copyWithScrollDeltaWithoutRemeasure(
+                // try to do the same for approach layout info (sometimes they diverge).
+                val scrolledApproachLayoutInfo =
+                    approachLayoutInfo?.copyWithScrollDeltaWithoutRemeasure(
                         delta = intDelta,
                         updateAnimations = true
                     )
-                if (scrolledPostLookaheadLayoutInfo != null) {
+                if (scrolledApproachLayoutInfo != null) {
                     // we can apply scroll delta for both phases without remeasure
-                    postLookaheadLayoutInfo = scrolledPostLookaheadLayoutInfo
+                    approachLayoutInfo = scrolledApproachLayoutInfo
                 } else {
-                    // we can't apply scroll delta for post lookahead, so we have to remeasure
+                    // we can't apply scroll delta for approach, so we have to remeasure
                     scrolledLayoutInfo = null
                 }
             }
@@ -437,7 +431,7 @@ constructor(
             if (scrolledLayoutInfo != null) {
                 applyMeasureResult(
                     result = scrolledLayoutInfo,
-                    isLookingAhead = hasLookaheadPassOccurred,
+                    isLookingAhead = hasLookaheadOccurred,
                     visibleItemsStayedTheSame = true
                 )
                 // we don't need to remeasure, so we only trigger re-placement:
@@ -483,13 +477,8 @@ constructor(
      */
     suspend fun animateScrollToItem(@AndroidXIntRange(from = 0) index: Int, scrollOffset: Int = 0) {
         scroll {
-            animatedScrollScope.animateScrollToItem(
-                index,
-                scrollOffset,
-                NumberOfItemsToTeleport,
-                density,
-                this
-            )
+            LazyLayoutScrollScope(this@LazyListState, this)
+                .animateScrollToItem(index, scrollOffset, NumberOfItemsToTeleport, density)
         }
     }
 
@@ -499,12 +488,12 @@ constructor(
         isLookingAhead: Boolean,
         visibleItemsStayedTheSame: Boolean = false
     ) {
-        if (!isLookingAhead && hasLookaheadPassOccurred) {
-            // If there was already a lookahead pass, record this result as postLookahead result
-            postLookaheadLayoutInfo = result
+        if (!isLookingAhead && hasLookaheadOccurred) {
+            // If there was already a lookahead pass, record this result as approach result
+            approachLayoutInfo = result
         } else {
             if (isLookingAhead) {
-                hasLookaheadPassOccurred = true
+                hasLookaheadOccurred = true
             }
 
             canScrollBackward = result.canScrollBackward
@@ -522,7 +511,7 @@ constructor(
             }
 
             if (isLookingAhead) {
-                updateScrollDeltaForPostLookahead(
+                _lazyLayoutScrollDeltaBetweenPasses.updateScrollDeltaForApproach(
                     result.scrollBackAmount,
                     result.density,
                     result.coroutineScope
@@ -533,48 +522,9 @@ constructor(
     }
 
     internal val scrollDeltaBetweenPasses: Float
-        get() = _scrollDeltaBetweenPasses.value
+        get() = _lazyLayoutScrollDeltaBetweenPasses.scrollDeltaBetweenPasses
 
-    private var _scrollDeltaBetweenPasses: AnimationState<Float, AnimationVector1D> =
-        AnimationState(Float.VectorConverter, 0f, 0f)
-
-    // Updates the scroll delta between lookahead & post-lookahead pass
-    private fun updateScrollDeltaForPostLookahead(
-        delta: Float,
-        density: Density,
-        coroutineScope: CoroutineScope
-    ) {
-        if (delta <= with(density) { DeltaThresholdForScrollAnimation.toPx() }) {
-            // If the delta is within the threshold, scroll by the delta amount instead of animating
-            return
-        }
-
-        // Scroll delta is updated during lookahead, we don't need to trigger lookahead when
-        // the delta changes.
-        Snapshot.withoutReadObservation {
-            val currentDelta = _scrollDeltaBetweenPasses.value
-
-            if (_scrollDeltaBetweenPasses.isRunning) {
-                _scrollDeltaBetweenPasses = _scrollDeltaBetweenPasses.copy(currentDelta - delta)
-                coroutineScope.launch {
-                    _scrollDeltaBetweenPasses.animateTo(
-                        0f,
-                        spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 0.5f),
-                        true
-                    )
-                }
-            } else {
-                _scrollDeltaBetweenPasses = AnimationState(Float.VectorConverter, -delta)
-                coroutineScope.launch {
-                    _scrollDeltaBetweenPasses.animateTo(
-                        0f,
-                        spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = 0.5f),
-                        true
-                    )
-                }
-            }
-        }
-    }
+    private val _lazyLayoutScrollDeltaBetweenPasses = LazyLayoutScrollDeltaBetweenPasses()
 
     /**
      * When the user provided custom keys for the items we can try to detect when there were items
@@ -617,8 +567,6 @@ constructor(
             )
     }
 }
-
-private val DeltaThresholdForScrollAnimation = 1.dp
 
 private val EmptyLazyListMeasureResult =
     LazyListMeasureResult(

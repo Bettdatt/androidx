@@ -77,6 +77,9 @@ internal class ViewLayer(
 
     private val matrixCache = LayerMatrixCache(getMatrix)
 
+    override val underlyingMatrix: Matrix
+        get() = matrixCache.calculateMatrix(this)
+
     /**
      * Local copy of the transform origin as GraphicsLayerModifier can be implemented as a model
      * object. Update this field within [updateLayerProperties] and use it in [resize] or other
@@ -364,22 +367,17 @@ internal class ViewLayer(
 
     override fun mapOffset(point: Offset, inverse: Boolean): Offset {
         return if (inverse) {
-            matrixCache.calculateInverseMatrix(this)?.map(point) ?: Offset.Infinite
+            matrixCache.mapInverse(this, point)
         } else {
-            matrixCache.calculateMatrix(this).map(point)
+            matrixCache.map(this, point)
         }
     }
 
     override fun mapBounds(rect: MutableRect, inverse: Boolean) {
         if (inverse) {
-            val matrix = matrixCache.calculateInverseMatrix(this)
-            if (matrix != null) {
-                matrix.map(rect)
-            } else {
-                rect.set(0f, 0f, 0f, 0f)
-            }
+            matrixCache.mapInverse(this, rect)
         } else {
-            matrixCache.calculateMatrix(this).map(rect)
+            matrixCache.map(this, rect)
         }
     }
 
@@ -392,11 +390,13 @@ internal class ViewLayer(
         } else {
             visibility = VISIBLE
         }
+        matrixCache.reset()
         clipToBounds = false
         drawnWithZ = false
         mTransformOrigin = TransformOrigin.Center
         this.drawBlock = drawBlock
         this.invalidateParentLayer = invalidateParentLayer
+        isInvalidated = false
     }
 
     override fun transform(matrix: Matrix) {

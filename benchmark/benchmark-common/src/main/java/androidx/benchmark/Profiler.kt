@@ -19,10 +19,13 @@ package androidx.benchmark
 import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Debug
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.annotation.RestrictTo
 import androidx.annotation.VisibleForTesting
+import androidx.benchmark.BenchmarkState.Companion.METHOD_TRACING_ESTIMATED_SLOWDOWN_FACTOR
+import androidx.benchmark.BenchmarkState.Companion.METHOD_TRACING_MAX_DURATION_NS
 import androidx.benchmark.BenchmarkState.Companion.TAG
 import androidx.benchmark.Outputs.dateToFileName
 import androidx.benchmark.json.BenchmarkData.TestResult.ProfilerOutput
@@ -63,9 +66,6 @@ sealed class Profiler() {
             )
         }
 
-        val sanitizedOutputRelativePath: String
-            get() = outputRelativePath.replace("(", "\\(").replace(")", "\\)")
-
         companion object {
             fun ofPerfettoTrace(label: String, absolutePath: String) =
                 ResultFile(
@@ -101,6 +101,35 @@ sealed class Profiler() {
     }
 
     abstract fun start(traceUniqueName: String): ResultFile?
+
+    /** Start profiling only if expected trace duration is unlikely to trigger an ANR */
+    fun startIfNotRiskingAnrDeadline(
+        traceUniqueName: String,
+        estimatedDurationNs: Long
+    ): ResultFile? {
+        val estimatedMethodTraceDurNs =
+            estimatedDurationNs * METHOD_TRACING_ESTIMATED_SLOWDOWN_FACTOR
+        return if (
+            this == MethodTracing &&
+                Looper.myLooper() == Looper.getMainLooper() &&
+                estimatedMethodTraceDurNs > METHOD_TRACING_MAX_DURATION_NS &&
+                Arguments.profilerSkipWhenDurationRisksAnr
+        ) {
+            val expectedDurSec = estimatedMethodTraceDurNs / 1_000_000_000.0
+            InstrumentationResults.scheduleIdeWarningOnNextReport(
+                """
+                        Skipping method trace of estimated duration $expectedDurSec sec to avoid ANR
+
+                        To disable this behavior, set instrumentation arg:
+                            androidx.benchmark.profiling.skipWhenDurationRisksAnr = false
+                    """
+                    .trimIndent()
+            )
+            null
+        } else {
+            start(traceUniqueName)
+        }
+    }
 
     abstract fun stop()
 
@@ -173,8 +202,9 @@ internal fun startRuntimeMethodTracing(
     InstrumentationResults.reportAdditionalFileToCopy("profiling_trace", path)
 
     val bufferSize = 16 * 1024 * 1024
-    if (sampled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-        startMethodTracingSampling(path, bufferSize, Arguments.profilerSampleFrequency)
+    if (sampled) {
+        val intervalUs = (1_000_000.0 / Arguments.profilerSampleFrequencyHz).toInt()
+        Debug.startMethodTracingSampling(path, bufferSize, intervalUs)
     } else {
         // NOTE: 0x10 flag enables low-overhead wall clock timing when ART module version supports
         // it. Note that this doesn't affect trace parsing, since this doesn't affect wall clock,
@@ -320,7 +350,7 @@ internal object StackSamplingSimpleperf : Profiler() {
                 Shell.executeScriptSilent(it.findSimpleperf() + " api-prepare")
                 it.startRecording(
                     RecordOptions()
-                        .setSampleFrequency(Arguments.profilerSampleFrequency)
+                        .setSampleFrequency(Arguments.profilerSampleFrequencyHz)
                         .recordDwarfCallGraph() // enable Java/Kotlin callstacks
                         .setEvent("cpu-clock") // Required on API 33 to enable traceOffCpu
                         .traceOffCpu() // track time sleeping
@@ -354,7 +384,7 @@ internal object StackSamplingSimpleperf : Profiler() {
     override fun config(packageNames: List<String>) =
         StackSamplingConfig(
             packageNames = packageNames,
-            frequency = Arguments.profilerSampleFrequency.toLong(),
+            frequency = Arguments.profilerSampleFrequencyHz.toLong(),
             duration = Arguments.profilerSampleDurationSeconds,
         )
 

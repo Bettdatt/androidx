@@ -32,8 +32,9 @@ import androidx.room.util.SchemaFileResolver
 import androidx.room.verifier.DatabaseVerificationErrors
 import androidx.room.verifier.DatabaseVerifier
 import androidx.room.vo.Dao
-import androidx.room.vo.DaoMethod
+import androidx.room.vo.DaoFunction
 import androidx.room.vo.Database
+import androidx.room.vo.DatabaseConstructor
 import androidx.room.vo.DatabaseView
 import androidx.room.vo.Entity
 import androidx.room.vo.FtsEntity
@@ -86,7 +87,7 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
         validateUniqueTableAndViewNames(element, entities, views)
 
         val declaredType = element.type
-        val daoMethods =
+        val daoFunctions =
             element
                 .getAllMethods()
                 .filter { it.isAbstract() }
@@ -103,25 +104,25 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
                     if (daoElement == null) {
                         context.logger.e(
                             executable,
-                            ProcessorErrors.DATABASE_INVALID_DAO_METHOD_RETURN_TYPE
+                            ProcessorErrors.DATABASE_INVALID_DAO_FUNCTION_RETURN_TYPE
                         )
                         null
                     } else {
                         if (executable.hasAnnotation(JvmName::class)) {
                             context.logger.w(
-                                Warning.JVM_NAME_ON_OVERRIDDEN_METHOD,
+                                Warning.JVM_NAME_ON_OVERRIDDEN_FUNCTION,
                                 executable,
-                                ProcessorErrors.JVM_NAME_ON_OVERRIDDEN_METHOD
+                                ProcessorErrors.JVM_NAME_ON_OVERRIDDEN_FUNCTION
                             )
                         }
                         val dao =
                             DaoProcessor(context, daoElement, declaredType, dbVerifier).process()
-                        DaoMethod(executable, dao)
+                        DaoFunction(executable, dao)
                     }
                 }
                 .toList()
 
-        validateUniqueDaoClasses(element, daoMethods, entities)
+        validateUniqueDaoClasses(element, daoFunctions, entities)
         validateUniqueIndices(element, entities)
 
         val hasForeignKeys = entities.any { it.foreignKeys.isNotEmpty() }
@@ -135,6 +136,8 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
             errorMsg = ProcessorErrors.INVALID_DATABASE_VERSION
         )
 
+        val constructorObject = processConstructorObject(element)
+
         val database =
             Database(
                 version = dbAnnotation.value.version,
@@ -142,10 +145,11 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
                 type = element.type,
                 entities = entities,
                 views = views,
-                daoMethods = daoMethods,
+                daoFunctions = daoFunctions,
                 exportSchema = dbAnnotation.value.exportSchema,
                 enableForeignKeys = hasForeignKeys,
                 overrideClearAllTables = hasClearAllTables,
+                constructorObject = constructorObject
             )
         database.autoMigrations = processAutoMigrations(element, database.bundle)
         return database
@@ -311,23 +315,23 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
 
     private fun validateUniqueDaoClasses(
         dbElement: XTypeElement,
-        daoMethods: List<DaoMethod>,
+        daoFunctions: List<DaoFunction>,
         entities: List<Entity>
     ) {
         val entityTypeNames = entities.map { it.typeName }.toSet()
-        daoMethods
+        daoFunctions
             .groupBy { it.dao.typeName }
             .forEach {
                 if (it.value.size > 1) {
                     val error =
                         ProcessorErrors.duplicateDao(
                             dao = it.key.toString(context.codeLanguage),
-                            methodNames = it.value.map { it.element.name }
+                            functionNames = it.value.map { it.element.name }
                         )
-                    it.value.forEach { daoMethod ->
+                    it.value.forEach { daoFunction ->
                         context.logger.e(
-                            daoMethod.element,
-                            ProcessorErrors.DAO_METHOD_CONFLICTS_WITH_OTHERS
+                            daoFunction.element,
+                            ProcessorErrors.DAO_FUNCTION_CONFLICTS_WITH_OTHERS
                         )
                     }
                     // also report the full error for the database
@@ -349,15 +353,15 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
                     }
                 }
             }
-        daoMethods.forEach { daoMethod ->
-            daoMethod.dao.deleteOrUpdateShortcutMethods.forEach { method ->
+        daoFunctions.forEach { daoFunction ->
+            daoFunction.dao.mDeleteOrUpdateShortcutFunctions.forEach { method ->
                 method.entities.forEach {
-                    check(method.element, daoMethod.dao, it.value.entityTypeName)
+                    check(method.element, daoFunction.dao, it.value.entityTypeName)
                 }
             }
-            daoMethod.dao.insertOrUpsertShortcutMethods.forEach { method ->
+            daoFunction.dao.mInsertOrUpsertShortcutFunctions.forEach { method ->
                 method.entities.forEach {
-                    check(method.element, daoMethod.dao, it.value.entityTypeName)
+                    check(method.element, daoFunction.dao, it.value.entityTypeName)
                 }
             }
         }
@@ -538,5 +542,79 @@ class DatabaseProcessor(baseContext: Context, val element: XTypeElement) {
             // We are done if we have resolved tables for all the views.
         } while (unresolvedViews.isNotEmpty())
         return result
+    }
+
+    private fun processConstructorObject(element: XTypeElement): DatabaseConstructor? {
+        val annotation = element.getAnnotation(androidx.room.ConstructedBy::class)
+        if (annotation == null) {
+            // If no @ConstructedBy is present then validate target is JVM (including Android)
+            // since reflection is available in those platforms and a database constructor is not
+            // needed.
+            context.checker.check(
+                predicate = context.isJvmOnlyTarget(),
+                element = element,
+                errorMsg = ProcessorErrors.MISSING_CONSTRUCTED_BY_ANNOTATION
+            )
+            return null
+        }
+        val type = annotation.getAsType("value") ?: return null
+        val typeElement = type.typeElement
+        if (typeElement == null) {
+            context.logger.e(element, ProcessorErrors.INVALID_CONSTRUCTED_BY_CLASS)
+            return null
+        }
+
+        context.checker.check(
+            predicate = typeElement.isKotlinObject(),
+            element = typeElement,
+            errorMsg = ProcessorErrors.INVALID_CONSTRUCTED_BY_NOT_OBJECT
+        )
+
+        context.checker.check(
+            predicate = typeElement.isExpect(),
+            element = typeElement,
+            errorMsg = ProcessorErrors.INVALID_CONSTRUCTED_BY_NOT_EXPECT
+        )
+
+        val expectedSuperInterfaceTypeName =
+            RoomTypeNames.ROOM_DB_CONSTRUCTOR.parametrizedBy(element.asClassName())
+        val superInterface = typeElement.superInterfaces.singleOrNull()
+        if (
+            superInterface == null ||
+                superInterface.asTypeName().rawTypeName != RoomTypeNames.ROOM_DB_CONSTRUCTOR
+        ) {
+            context.logger.e(
+                element = typeElement,
+                msg =
+                    ProcessorErrors.invalidConstructedBySuperInterface(
+                        expectedSuperInterfaceTypeName.toString(context.codeLanguage)
+                    )
+            )
+            return null
+        }
+
+        val typeArg = superInterface.typeArguments.singleOrNull()
+        if (typeArg == null || typeArg.asTypeName().rawTypeName != element.asClassName()) {
+            context.logger.e(
+                element = typeElement,
+                msg =
+                    ProcessorErrors.invalidConstructedBySuperInterface(
+                        expectedSuperInterfaceTypeName.toString(context.codeLanguage)
+                    )
+            )
+            return null
+        }
+
+        val initializeExecutableElement =
+            context.processingEnv
+                .requireTypeElement(RoomTypeNames.ROOM_DB_CONSTRUCTOR)
+                .getDeclaredMethods()
+                .single()
+        val isInitOverridden =
+            typeElement.getDeclaredMethods().any {
+                it.overrides(initializeExecutableElement, typeElement)
+            }
+
+        return DatabaseConstructor(typeElement, isInitOverridden)
     }
 }

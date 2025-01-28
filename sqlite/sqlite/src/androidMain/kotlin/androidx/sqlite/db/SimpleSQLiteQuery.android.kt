@@ -23,8 +23,7 @@ package androidx.sqlite.db
  * @param bindArgs The bind argument value that will replace the placeholders in the query.
  * @constructor Creates an SQL query with the sql string and the bind arguments.
  */
-@Suppress("AcronymName") // SQL is a known term and should remain capitalized
-class SimpleSQLiteQuery(
+public class SimpleSQLiteQuery(
     private val query: String,
     @Suppress("ArrayReturn") // Due to legacy API
     private val bindArgs: Array<out Any?>?
@@ -35,7 +34,7 @@ class SimpleSQLiteQuery(
      *
      * @param query The SQL query to execute. Cannot include bind parameters.
      */
-    constructor(query: String) : this(query, null)
+    public constructor(query: String) : this(query, null)
 
     override val sql: String
         get() = this.query
@@ -45,7 +44,6 @@ class SimpleSQLiteQuery(
      *
      * @param [statement] The SQL query to execute. Cannot include bind parameters.
      */
-    @Suppress("AcronymName") // SQL is a known term and should remain capitalized
     override fun bindTo(statement: SupportSQLiteProgram) {
         bind(statement, bindArgs)
     }
@@ -53,7 +51,7 @@ class SimpleSQLiteQuery(
     override val argCount: Int
         get() = bindArgs?.size ?: 0
 
-    companion object {
+    public companion object {
         /**
          * Binds the given arguments into the given sqlite statement.
          *
@@ -61,8 +59,7 @@ class SimpleSQLiteQuery(
          * @param [bindArgs] The list of bind arguments
          */
         @JvmStatic
-        fun bind(
-            @Suppress("AcronymName") // SQL is a known term and should remain capitalized
+        public fun bind(
             statement: SupportSQLiteProgram,
             @Suppress("ArrayReturn") // Due to legacy API
             bindArgs: Array<out Any?>?
@@ -78,12 +75,7 @@ class SimpleSQLiteQuery(
             }
         }
 
-        private fun bind(
-            @Suppress("AcronymName") // SQL is a known term and should remain capitalized
-            statement: SupportSQLiteProgram,
-            index: Int,
-            arg: Any?
-        ) {
+        private fun bind(statement: SupportSQLiteProgram, index: Int, arg: Any?) {
             // extracted from android.database.sqlite.SQLiteConnection
             if (arg == null) {
                 statement.bindNull(index)

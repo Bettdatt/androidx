@@ -28,12 +28,12 @@ import androidx.room.parser.SQLTypeAffinity
 import androidx.room.processor.ProcessorErrors.RELATION_IN_ENTITY
 import androidx.room.testing.context
 import androidx.room.vo.CallType
+import androidx.room.vo.DataClass
 import androidx.room.vo.Field
 import androidx.room.vo.FieldGetter
 import androidx.room.vo.FieldSetter
 import androidx.room.vo.Fields
 import androidx.room.vo.Index
-import androidx.room.vo.Pojo
 import androidx.room.vo.columnNames
 import org.hamcrest.CoreMatchers.hasItems
 import org.hamcrest.CoreMatchers.`is`
@@ -279,7 +279,8 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
         ) { entity, invocation ->
             val idField = entity.fields.first()
             val cursorValueReader =
-                idField.cursorValueReader ?: throw AssertionError("must have a cursor value reader")
+                idField.statementValueReader
+                    ?: throw AssertionError("must have a cursor value reader")
             assertThat(
                 cursorValueReader.typeMirror().asTypeName(),
                 `is`(invocation.processingEnv.requireType(XTypeName.PRIMITIVE_INT).asTypeName())
@@ -338,12 +339,12 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
             """
                 @PrimaryKey
                 private int id;
-                public void setId(int id) {}
-                public int getId(){ return id; }
                 public int id(){ return id; }
+                public int getId(){ return id; }
+                public void setId(int id) {}
                 """
         ) { _, invocation ->
-            invocation.assertCompilationResult { hasErrorContaining("getId, id") }
+            invocation.assertCompilationResult { hasErrorContaining("id, getId") }
         }
     }
 
@@ -398,12 +399,12 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
             """
                 @PrimaryKey
                 private int id;
-                public void setId(int id) {}
-                public void id(int id) {}
                 public int getId(){ return id; }
+                public void id(int id) {}
+                public void setId(int id) {}
                 """
         ) { _, invocation ->
-            invocation.assertCompilationResult { hasErrorContaining("setId, id") }
+            invocation.assertCompilationResult { hasErrorContaining("id, setId") }
         }
     }
 
@@ -582,7 +583,7 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
         }
     }
 
-    private fun fieldsByName(entity: Pojo, vararg fieldNames: String): List<Field> {
+    private fun fieldsByName(entity: DataClass, vararg fieldNames: String): List<Field> {
         return fieldNames.mapNotNull { name -> entity.fields.find { it.name == name } }
     }
 
@@ -1183,7 +1184,9 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
         ) { entity, invocation ->
             assertThat(entity.indices.isEmpty(), `is`(true))
             invocation.assertCompilationResult {
-                hasErrorContaining(ProcessorErrors.CANNOT_USE_MORE_THAN_ONE_POJO_FIELD_ANNOTATION)
+                hasErrorContaining(
+                    ProcessorErrors.CANNOT_USE_MORE_THAN_ONE_DATA_CLASS_FIELD_ANNOTATION
+                )
             }
         }
     }
@@ -2093,16 +2096,9 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
             sources = listOf(COMMON.USER)
         ) { _, invocation ->
             invocation.assertCompilationResult {
-                // TODO: https://github.com/google/ksp/issues/603
-                // KSP validator does not validate annotation types so we will get another error
-                // down the line.
-                if (invocation.isKsp) {
-                    hasErrorContaining(ProcessorErrors.foreignKeyNotAnEntity("<Error>")).onLine(11)
-                } else {
-                    hasErrorContaining(
-                        "Element 'foo.bar.MyEntity' references a type that is not present"
-                    )
-                }
+                hasErrorContaining(
+                    "Element 'foo.bar.MyEntity' references a type that is not present"
+                )
             }
         }
     }
@@ -2504,13 +2500,13 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
     fun recursion_2Levels_embedToRelation() {
         singleEntity(
             """
-                int pojoId;
+                int dataClassId;
                 @Embedded
                 A a;
 
                 static class A {
                     int entityId;
-                    @Relation(parentColumn = "entityId", entityColumn = "pojoId")
+                    @Relation(parentColumn = "entityId", entityColumn = "dataClassId")
                     List<MyEntity> myEntity;
                 }
                 """
@@ -2526,7 +2522,7 @@ class TableEntityProcessorTest : BaseEntityParserTest() {
     }
 
     @Test
-    fun recursion_2Levels_onlyEmbeds_entityToPojo() {
+    fun recursion_2Levels_onlyEmbeds_entityToDataClass() {
         singleEntity(
             """
                 @Embedded

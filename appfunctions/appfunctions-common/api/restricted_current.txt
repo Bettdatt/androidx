@@ -1,0 +1,155 @@
+// Signature format: 4.0
+package androidx.appfunctions {
+
+  public abstract class AppFunctionAppException extends androidx.appfunctions.AppFunctionException {
+  }
+
+  public final class AppFunctionAppUnknownException extends androidx.appfunctions.AppFunctionAppException {
+    ctor public AppFunctionAppUnknownException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionCancelledException extends androidx.appfunctions.AppFunctionSystemException {
+    ctor public AppFunctionCancelledException(optional String? errorMessage);
+  }
+
+  public interface AppFunctionContext {
+    method public String getCallingPackageName();
+    method public android.content.pm.SigningInfo getCallingPackageSigningInfo();
+    method public android.content.Context getContext();
+    property public abstract String callingPackageName;
+    property public abstract android.content.pm.SigningInfo callingPackageSigningInfo;
+    property public abstract android.content.Context context;
+  }
+
+  @RequiresApi(35) public final class AppFunctionData {
+    method public androidx.appfunctions.AppFunctionData getAppFunctionData(String key);
+    method public java.util.List<androidx.appfunctions.AppFunctionData>? getAppFunctionDataList(String key);
+    method public boolean getBoolean(String key);
+    method public boolean getBoolean(String key, boolean defaultValue);
+    method public boolean[]? getBooleanArray(String key);
+    method public double getDouble(String key);
+    method public double getDouble(String key, double defaultValue);
+    method public double[]? getDoubleArray(String key);
+    method public long getLong(String key);
+    method public long getLong(String key, long defaultValue);
+    method public long[]? getLongArray(String key);
+    method public String getQualifiedName();
+    method public String getString(String key);
+    method public String getString(String key, String defaultValue);
+    method public java.util.List<java.lang.String>? getStringList(String key);
+    property public final String qualifiedName;
+    field public static final androidx.appfunctions.AppFunctionData.Companion Companion;
+    field public static final androidx.appfunctions.AppFunctionData EMPTY;
+  }
+
+  public static final class AppFunctionData.Builder {
+    ctor public AppFunctionData.Builder(String qualifiedName);
+    method public androidx.appfunctions.AppFunctionData build();
+    method public androidx.appfunctions.AppFunctionData.Builder setAppFunctionData(String key, androidx.appfunctions.AppFunctionData value);
+    method public androidx.appfunctions.AppFunctionData.Builder setAppFunctionDataList(String key, java.util.List<androidx.appfunctions.AppFunctionData> value);
+    method public androidx.appfunctions.AppFunctionData.Builder setBoolean(String key, boolean value);
+    method public androidx.appfunctions.AppFunctionData.Builder setBooleanArray(String key, boolean[] value);
+    method public androidx.appfunctions.AppFunctionData.Builder setDouble(String key, double value);
+    method public androidx.appfunctions.AppFunctionData.Builder setDoubleArray(String key, double[] value);
+    method public androidx.appfunctions.AppFunctionData.Builder setLong(String key, long value);
+    method public androidx.appfunctions.AppFunctionData.Builder setLongArray(String key, long[] value);
+    method public androidx.appfunctions.AppFunctionData.Builder setString(String key, String value);
+    method public androidx.appfunctions.AppFunctionData.Builder setStringList(String key, java.util.List<java.lang.String> value);
+  }
+
+  public static final class AppFunctionData.Companion {
+    property public final androidx.appfunctions.AppFunctionData EMPTY;
+  }
+
+  public final class AppFunctionDeniedException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionDeniedException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionDisabledException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionDisabledException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionElementAlreadyExistsException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionElementAlreadyExistsException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionElementNotFoundException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionElementNotFoundException(optional String? errorMessage);
+  }
+
+  public abstract class AppFunctionException extends java.lang.Exception {
+    method public final String? getErrorMessage();
+    property public final String? errorMessage;
+    field public static final androidx.appfunctions.AppFunctionException.Companion Companion;
+  }
+
+  public static final class AppFunctionException.Companion {
+  }
+
+  public final class AppFunctionFunctionNotFoundException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionFunctionNotFoundException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionInvalidArgumentException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionInvalidArgumentException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionLimitExceededException extends androidx.appfunctions.AppFunctionRequestException {
+    ctor public AppFunctionLimitExceededException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionNotSupportedException extends androidx.appfunctions.AppFunctionAppException {
+    ctor public AppFunctionNotSupportedException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionPermissionRequiredException extends androidx.appfunctions.AppFunctionAppException {
+    ctor public AppFunctionPermissionRequiredException(optional String? errorMessage);
+  }
+
+  public abstract class AppFunctionRequestException extends androidx.appfunctions.AppFunctionException {
+  }
+
+  @kotlin.annotation.Retention(kotlin.annotation.AnnotationRetention.SOURCE) @kotlin.annotation.Target(allowedTargets=kotlin.annotation.AnnotationTarget.CLASS) public @interface AppFunctionSerializable {
+  }
+
+  public abstract class AppFunctionSystemException extends androidx.appfunctions.AppFunctionException {
+  }
+
+  public final class AppFunctionSystemUnknownException extends androidx.appfunctions.AppFunctionSystemException {
+    ctor public AppFunctionSystemUnknownException(optional String? errorMessage);
+  }
+
+  public final class AppFunctionUnknownException extends androidx.appfunctions.AppFunctionException {
+    ctor public AppFunctionUnknownException(int errorCode, optional String? errorMessage);
+    method public int getErrorCode();
+    property public final int errorCode;
+  }
+
+  public final class ExecuteAppFunctionRequest {
+    ctor public ExecuteAppFunctionRequest(String targetPackageName, String functionIdentifier, androidx.appfunctions.AppFunctionData functionParameters);
+    method public String getFunctionIdentifier();
+    method public androidx.appfunctions.AppFunctionData getFunctionParameters();
+    method public String getTargetPackageName();
+    property public final String functionIdentifier;
+    property public final androidx.appfunctions.AppFunctionData functionParameters;
+    property public final String targetPackageName;
+    field public static final androidx.appfunctions.ExecuteAppFunctionRequest.Companion Companion;
+  }
+
+  public static final class ExecuteAppFunctionRequest.Companion {
+  }
+
+  public final class ExecuteAppFunctionResponse {
+    ctor public ExecuteAppFunctionResponse(androidx.appfunctions.AppFunctionData result);
+    method public androidx.appfunctions.AppFunctionData getResult();
+    property public final androidx.appfunctions.AppFunctionData result;
+    field public static final androidx.appfunctions.ExecuteAppFunctionResponse.Companion Companion;
+    field public static final String PROPERTY_RETURN_VALUE = "androidAppfunctionsReturnValue";
+  }
+
+  public static final class ExecuteAppFunctionResponse.Companion {
+    property public static final String PROPERTY_RETURN_VALUE;
+  }
+
+}
+

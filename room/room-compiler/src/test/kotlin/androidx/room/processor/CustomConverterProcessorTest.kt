@@ -22,10 +22,10 @@ import androidx.room.compiler.codegen.VisibilityModifier
 import androidx.room.compiler.codegen.XAnnotationSpec
 import androidx.room.compiler.codegen.XClassName
 import androidx.room.compiler.codegen.XFunSpec
-import androidx.room.compiler.codegen.XFunSpec.Builder.Companion.addStatement
 import androidx.room.compiler.codegen.XTypeName
 import androidx.room.compiler.codegen.XTypeSpec
-import androidx.room.compiler.codegen.XTypeSpec.Builder.Companion.apply
+import androidx.room.compiler.codegen.compat.XConverters.applyToJavaPoet
+import androidx.room.compiler.codegen.compat.XConverters.toString
 import androidx.room.compiler.processing.util.Source
 import androidx.room.compiler.processing.util.XTestInvocation
 import androidx.room.compiler.processing.util.runProcessorTest
@@ -251,10 +251,10 @@ class CustomConverterProcessorTest {
             Source.java(
                 extendingClassName.canonicalName,
                 "package foo.bar;\n" +
-                    XTypeSpec.classBuilder(CodeLanguage.JAVA, extendingClassName)
+                    XTypeSpec.classBuilder(extendingClassName)
                         .apply { superclass(CONVERTER.parametrizedBy(STRING, XTypeName.BOXED_INT)) }
                         .build()
-                        .toString()
+                        .toString(CodeLanguage.JAVA)
             )
         runProcessorTest(sources = listOf(baseConverter, extendingClass)) { invocation ->
             val element =
@@ -286,7 +286,7 @@ class CustomConverterProcessorTest {
                 .isEqualTo(XTypeName.BOXED_SHORT.copy(nullable = true))
             assertThat(converter?.toTypeName).isEqualTo(XTypeName.BOXED_CHAR.copy(nullable = true))
             invocation.assertCompilationResult {
-                hasErrorContaining("Multiple methods define the same conversion")
+                hasErrorContaining("Multiple functions define the same conversion")
             }
         }
     }
@@ -321,7 +321,7 @@ class CustomConverterProcessorTest {
                 if (invocation.isKsp) {
                     // no error
                 } else {
-                    hasErrorContaining("Multiple methods define the same")
+                    hasErrorContaining("Multiple functions define the same")
                 }
             }
         }
@@ -365,21 +365,18 @@ class CustomConverterProcessorTest {
         duplicate: Boolean = false
     ): Source {
         val code =
-            XTypeSpec.classBuilder(CodeLanguage.JAVA, CONVERTER, isOpen = true)
+            XTypeSpec.classBuilder(CONVERTER, isOpen = true)
                 .apply {
                     setVisibility(VisibilityModifier.PUBLIC)
                     fun buildMethod(name: String) =
-                        XFunSpec.builder(CodeLanguage.JAVA, name, VisibilityModifier.PUBLIC)
+                        XFunSpec.builder(name, VisibilityModifier.PUBLIC)
+                            .addAnnotation(
+                                XAnnotationSpec.builder(RoomAnnotationTypeNames.TYPE_CONVERTER)
+                                    .build()
+                            )
+                            .returns(to)
+                            .addParameter("input", from)
                             .apply {
-                                addAnnotation(
-                                    XAnnotationSpec.builder(
-                                            CodeLanguage.JAVA,
-                                            RoomAnnotationTypeNames.TYPE_CONVERTER
-                                        )
-                                        .build()
-                                )
-                                returns(to)
-                                addParameter(from, "input")
                                 if (to.isPrimitive) {
                                     addStatement("return 0")
                                 } else {
@@ -392,12 +389,9 @@ class CustomConverterProcessorTest {
                         addFunction(buildMethod("convertF2"))
                     }
                 }
-                .apply(
-                    javaTypeBuilder = { addTypeVariables(typeVariables) },
-                    kotlinTypeBuilder = { error("Test converter shouldn't be generated in Kotlin") }
-                )
+                .applyToJavaPoet { addTypeVariables(typeVariables) }
                 .build()
-                .toString()
+                .toString(CodeLanguage.JAVA)
         return Source.java(CONVERTER.canonicalName, "package ${CONVERTER.packageName};\n$code")
     }
 

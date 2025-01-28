@@ -20,10 +20,8 @@ import androidx.annotation.FloatRange
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -38,9 +36,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LoadingIndicatorDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.internal.FloatProducer
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.tokens.ElevationTokens
-import androidx.compose.material3.tokens.MotionTokens
+import androidx.compose.material3.tokens.MotionSchemeKeyTokens
+import androidx.compose.material3.value
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
@@ -66,10 +66,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScrollModifierNode
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.DelegatableNode
 import androidx.compose.ui.node.DelegatingNode
@@ -83,6 +83,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import kotlin.js.JsName
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -232,6 +233,9 @@ internal class PullToRefreshModifierNode(
     var threshold: Dp,
 ) : DelegatingNode(), CompositionLocalConsumerModifierNode, NestedScrollConnection {
 
+    override val shouldAutoInvalidate: Boolean
+        get() = false
+
     private var nestedScrollNode: DelegatableNode =
         nestedScrollModifierNode(
             connection = this,
@@ -253,6 +257,7 @@ internal class PullToRefreshModifierNode(
     override fun onAttach() {
         delegate(nestedScrollNode)
         coroutineScope.launch { state.snapTo(if (isRefreshing) 1f else 0f) }
+        verticalOffset = if (isRefreshing) thresholdPx.toFloat() else 0f
     }
 
     override fun onPreScroll(
@@ -320,26 +325,25 @@ internal class PullToRefreshModifierNode(
         if (isRefreshing) return 0f // Already refreshing, do nothing
         // Trigger refresh
         if (adjustedDistancePulled > thresholdPx) {
-            animateToThreshold()
             onRefresh()
-        } else {
-            animateToHidden()
         }
 
         val consumed =
             when {
                 // We are flinging without having dragged the pull refresh (for example a fling
-                // inside
-                // a list) - don't consume
+                // inside a list) - don't consume
                 distancePulled == 0f -> 0f
                 // If the velocity is negative, the fling is upwards, and we don't want to prevent
-                // the
                 // the list from scrolling
                 velocity < 0f -> 0f
                 // We are showing the indicator, and the fling is downwards - consume everything
                 else -> velocity
             }
+
+        animateToHidden()
+
         distancePulled = 0f
+
         return consumed
     }
 
@@ -392,7 +396,7 @@ object PullToRefreshDefaults {
      */
     @ExperimentalMaterial3ExpressiveApi
     val loadingIndicatorContainerColor: Color
-        @Composable get() = LoadingIndicatorDefaults.ContainerColor
+        @Composable get() = LoadingIndicatorDefaults.containedContainerColor
 
     /** The default indicator color for [Indicator] */
     @Deprecated("Use loadingIndicatorColor instead", ReplaceWith("loadingIndicatorColor"))
@@ -405,13 +409,16 @@ object PullToRefreshDefaults {
      */
     @ExperimentalMaterial3ExpressiveApi
     val loadingIndicatorColor: Color
-        @Composable get() = LoadingIndicatorDefaults.ContainedIndicatorColor
+        @Composable get() = LoadingIndicatorDefaults.containedIndicatorColor
 
     /** The default refresh threshold for [rememberPullToRefreshState] */
     val PositionalThreshold = 80.dp
 
-    /** The default elevation for [IndicatorBox] */
+    /** The default elevation for an [IndicatorBox] that is applied to an [Indicator] */
     val Elevation = ElevationTokens.Level2
+
+    /** The default elevation for an [IndicatorBox] that is applied to a [LoadingIndicator] */
+    val LoadingIndicatorElevation = ElevationTokens.Level0
 
     /**
      * A Wrapper that handles the size, offset, clipping, shadow, and background drawing for a
@@ -454,12 +461,22 @@ object PullToRefreshDefaults {
                             this@drawWithContent.drawContent()
                         }
                     }
-                    .graphicsLayer {
-                        val showElevation = state.distanceFraction > 0f || isRefreshing
-                        translationY = state.distanceFraction * threshold.roundToPx() - size.height
-                        shadowElevation = if (showElevation) elevation.toPx() else 0f
-                        this.shape = shape
-                        clip = true
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, placeable.height) {
+                            placeable.placeWithLayer(
+                                0,
+                                0,
+                                layerBlock = {
+                                    val showElevation = state.distanceFraction > 0f || isRefreshing
+                                    translationY =
+                                        state.distanceFraction * threshold.roundToPx() - size.height
+                                    shadowElevation = if (showElevation) elevation.toPx() else 0f
+                                    this.shape = shape
+                                    clip = true
+                                }
+                            )
+                        }
                     }
                     .background(color = containerColor, shape = shape),
             contentAlignment = Alignment.Center,
@@ -496,9 +513,10 @@ object PullToRefreshDefaults {
             containerColor = containerColor,
             threshold = threshold,
         ) {
+            // TODO Load the motionScheme tokens from the component tokens file
             Crossfade(
                 targetState = isRefreshing,
-                animationSpec = tween(durationMillis = CrossfadeDurationMs)
+                animationSpec = MotionSchemeKeyTokens.DefaultEffects.value()
             ) { refreshing ->
                 if (refreshing) {
                     CircularProgressIndicator(
@@ -516,7 +534,18 @@ object PullToRefreshDefaults {
         }
     }
 
-    /** A [LoadingIndicator] indicator for [PullToRefreshBox]. */
+    /**
+     * A [LoadingIndicator] indicator for [PullToRefreshBox].
+     *
+     * @param state the state of this modifier, will use `state.distanceFraction` and [threshold] to
+     *   calculate the offset
+     * @param isRefreshing whether a refresh is occurring
+     * @param modifier the modifier applied to this layout
+     * @param containerColor the container color of this indicator
+     * @param color the color of this indicator
+     * @param elevation the elevation of this indicator
+     * @param threshold how much the indicator can be pulled down before a refresh is triggered on
+     */
     @ExperimentalMaterial3ExpressiveApi
     @Composable
     fun LoadingIndicator(
@@ -525,7 +554,7 @@ object PullToRefreshDefaults {
         modifier: Modifier = Modifier,
         containerColor: Color = this.loadingIndicatorContainerColor,
         color: Color = this.loadingIndicatorColor,
-        elevation: Dp = ElevationTokens.Level0,
+        elevation: Dp = LoadingIndicatorElevation,
         threshold: Dp = PositionalThreshold
     ) {
         IndicatorBox(
@@ -536,9 +565,10 @@ object PullToRefreshDefaults {
             elevation = elevation,
             threshold = threshold,
         ) {
+            // TODO Load the motionScheme tokens from the component tokens file
             Crossfade(
                 targetState = isRefreshing,
-                animationSpec = tween(durationMillis = CrossfadeDurationMs)
+                animationSpec = MotionSchemeKeyTokens.DefaultEffects.value()
             ) { refreshing ->
                 if (refreshing) {
                     ContainedLoadingIndicator(
@@ -605,9 +635,11 @@ interface PullToRefreshState {
      */
     @get:FloatRange(from = 0.0) val distanceFraction: Float
 
-    /** Whether the state is currently animating */
+    /**
+     * whether the state is currently animating the indicator to the threshold offset, or back to
+     * the hidden offset
+     */
     val isAnimating: Boolean
-        get() = false
 
     /**
      * Animate the distance towards the anchor or threshold position, where the indicator will be
@@ -634,7 +666,9 @@ fun rememberPullToRefreshState(): PullToRefreshState {
  *
  * Note that in most cases, you are advised to use [rememberPullToRefreshState] when in composition.
  */
-@ExperimentalMaterial3Api fun PullToRefreshState(): PullToRefreshState = PullToRefreshStateImpl()
+@JsName("funPullToRefreshState")
+@ExperimentalMaterial3Api
+fun PullToRefreshState(): PullToRefreshState = PullToRefreshStateImpl()
 
 @ExperimentalMaterial3Api
 internal class PullToRefreshStateImpl
@@ -672,13 +706,18 @@ private constructor(private val anim: Animatable<Float, AnimationVector1D>) : Pu
 /** The default pull indicator for [PullToRefreshBox] */
 @Composable
 private fun CircularArrowProgressIndicator(
-    progress: () -> Float,
+    progress: FloatProducer,
     color: Color,
 ) {
     val path = remember { Path().apply { fillType = PathFillType.EvenOdd } }
     // TODO: Consider refactoring this sub-component utilizing Modifier.Node
     val targetAlpha by remember { derivedStateOf { if (progress() >= 1f) MaxAlpha else MinAlpha } }
-    val alphaState = animateFloatAsState(targetValue = targetAlpha, animationSpec = AlphaTween)
+    // TODO Load the motionScheme tokens from the component tokens file
+    val alphaState =
+        animateFloatAsState(
+            targetValue = targetAlpha,
+            animationSpec = MotionSchemeKeyTokens.DefaultEffects.value()
+        )
     Canvas(
         Modifier.semantics(mergeDescendants = true) {
                 progressBarRangeInfo = ProgressBarRangeInfo(progress(), 0f..1f, 0)
@@ -768,7 +807,6 @@ private fun DrawScope.drawArrow(
 }
 
 private const val MaxProgressArc = 0.8f
-private const val CrossfadeDurationMs = MotionTokens.DurationShort2.toInt()
 
 /** The default stroke width for [Indicator] */
 private val StrokeWidth = 2.5.dp
@@ -786,7 +824,6 @@ internal val LoaderIndicatorWidth = LoadingIndicatorDefaults.ContainerWidth
 // Values taken from SwipeRefreshLayout
 private const val MinAlpha = 0.3f
 private const val MaxAlpha = 1f
-private val AlphaTween = tween<Float>(MotionTokens.DurationMedium2.toInt(), easing = LinearEasing)
 
 /**
  * The distance pulled is multiplied by this value to give us the adjusted distance pulled, which is

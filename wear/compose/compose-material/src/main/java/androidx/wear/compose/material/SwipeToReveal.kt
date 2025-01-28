@@ -49,7 +49,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
-import androidx.wear.compose.foundation.ExperimentalWearFoundationApi
 import androidx.wear.compose.foundation.RevealActionType
 import androidx.wear.compose.foundation.RevealScope
 import androidx.wear.compose.foundation.RevealState
@@ -91,7 +90,6 @@ import kotlin.math.abs
  * @see [SwipeToReveal]
  */
 @ExperimentalWearMaterialApi
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 public fun SwipeToRevealChip(
     primaryAction: @Composable RevealScope.() -> Unit,
@@ -154,7 +152,6 @@ public fun SwipeToRevealChip(
  * @see [SwipeToReveal]
  */
 @ExperimentalWearMaterialApi
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 public fun SwipeToRevealCard(
     primaryAction: @Composable RevealScope.() -> Unit,
@@ -194,7 +191,6 @@ public fun SwipeToRevealCard(
  * @param interactionSource The [MutableInteractionSource] representing the stream of interactions
  *   with this action.
  */
-@OptIn(ExperimentalWearFoundationApi::class)
 @ExperimentalWearMaterialApi
 @Composable
 public fun RevealScope.SwipeToRevealPrimaryAction(
@@ -204,7 +200,7 @@ public fun RevealScope.SwipeToRevealPrimaryAction(
     label: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource? = null,
-) =
+): Unit =
     ActionCommon(
         revealState = revealState,
         actionType = RevealActionType.PrimaryAction,
@@ -227,7 +223,6 @@ public fun RevealScope.SwipeToRevealPrimaryAction(
  * @param content The composable which will be displayed on the action. It is recommended to keep
  *   this content as an [Icon] composable.
  */
-@OptIn(ExperimentalWearFoundationApi::class)
 @ExperimentalWearMaterialApi
 @Composable
 public fun RevealScope.SwipeToRevealSecondaryAction(
@@ -236,7 +231,7 @@ public fun RevealScope.SwipeToRevealSecondaryAction(
     modifier: Modifier = Modifier,
     interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
-) =
+): Unit =
     ActionCommon(
         revealState = revealState,
         actionType = RevealActionType.SecondaryAction,
@@ -260,7 +255,6 @@ public fun RevealScope.SwipeToRevealSecondaryAction(
  * @param label An optional label which will be displayed on the action. We strongly recommend to
  *   set [icon] and/or [label] for the action.
  */
-@OptIn(ExperimentalWearFoundationApi::class)
 @ExperimentalWearMaterialApi
 @Composable
 public fun RevealScope.SwipeToRevealUndoAction(
@@ -292,10 +286,9 @@ public fun RevealScope.SwipeToRevealUndoAction(
 
 /** Defaults for Material [SwipeToReveal]. */
 @ExperimentalWearMaterialApi
-@OptIn(ExperimentalWearFoundationApi::class)
 public object SwipeToRevealDefaults {
     /** Recommended shape for [SwipeToReveal] actions when used with [Card]. */
-    public val CardActionShape = RoundedCornerShape(40.dp)
+    public val CardActionShape: RoundedCornerShape = RoundedCornerShape(40.dp)
 
     /**
      * The recommended colors used to display the contents of the primary, secondary and undo
@@ -330,10 +323,10 @@ public object SwipeToRevealDefaults {
     }
 
     /** [ImageVector] for delete icon, often used for the primary action. */
-    public val Delete = Icons.Outlined.Delete
+    public val Delete: ImageVector = Icons.Outlined.Delete
 
     /** [ImageVector] for more options icon, often used for the secondary action. */
-    public val MoreOptions = Icons.Outlined.MoreVert
+    public val MoreOptions: ImageVector = Icons.Outlined.MoreVert
 
     internal val UndoButtonHorizontalPadding = 14.dp
     internal val UndoButtonVerticalPadding = 6.dp
@@ -354,12 +347,12 @@ public object SwipeToRevealDefaults {
 @ExperimentalWearMaterialApi
 public class SwipeToRevealActionColors
 constructor(
-    val primaryActionBackgroundColor: Color,
-    val primaryActionContentColor: Color,
-    val secondaryActionBackgroundColor: Color,
-    val secondaryActionContentColor: Color,
-    val undoActionBackgroundColor: Color,
-    val undoActionContentColor: Color
+    public val primaryActionBackgroundColor: Color,
+    public val primaryActionContentColor: Color,
+    public val secondaryActionBackgroundColor: Color,
+    public val secondaryActionContentColor: Color,
+    public val undoActionBackgroundColor: Color,
+    public val undoActionContentColor: Color
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -389,7 +382,7 @@ constructor(
     }
 }
 
-@OptIn(ExperimentalWearMaterialApi::class, ExperimentalWearFoundationApi::class)
+@OptIn(ExperimentalWearMaterialApi::class)
 @Composable
 private fun SwipeToRevealComponent(
     primaryAction: @Composable RevealScope.() -> Unit,
@@ -452,7 +445,7 @@ private fun SwipeToRevealComponent(
 }
 
 /** Action composables for [SwipeToReveal]. */
-@OptIn(ExperimentalWearFoundationApi::class, ExperimentalWearMaterialApi::class)
+@OptIn(ExperimentalWearMaterialApi::class)
 @Composable
 private fun RevealScope.ActionWrapper(
     revealState: RevealState,
@@ -484,7 +477,7 @@ private fun RevealScope.ActionWrapper(
     }
 }
 
-@OptIn(ExperimentalWearFoundationApi::class, ExperimentalWearMaterialApi::class)
+@OptIn(ExperimentalWearMaterialApi::class)
 @Composable
 private fun RevealScope.UndoActionWrapper(
     colors: SwipeToRevealActionColors,
@@ -507,7 +500,6 @@ private fun RevealScope.UndoActionWrapper(
     }
 }
 
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 private fun RevealScope.ActionCommon(
     revealState: RevealState,
@@ -543,7 +535,6 @@ private fun RevealScope.ActionCommon(
     }
 }
 
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 private fun RevealScope.ActionIcon(revealState: RevealState, content: @Composable () -> Unit) {
     // Change opacity of icons from 0% to 100% between 50% to 75% of the progress
@@ -575,7 +566,6 @@ private fun RevealScope.ActionIcon(revealState: RevealState, content: @Composabl
     }
 }
 
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 private fun RevealScope.ActionLabel(revealState: RevealState, content: @Composable () -> Unit) {
     val labelAlpha =

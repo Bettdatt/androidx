@@ -35,7 +35,9 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 
+@DisableCachingByDefault(because = "Copy task that is I/O bound")
 abstract class ApkCopyTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
@@ -86,10 +88,10 @@ fun setupTestApkCopy(project: Project) {
                     }
                 project.addToBuildOnServer(apkCopy)
             }
-            @Suppress("UnstableApiUsage") // usage of HasDeviceTests
+            @Suppress("UnstableApiUsage") // HasDeviceTests is @Incubating b/372495504
             when {
                 variant is HasDeviceTests -> {
-                    variant.deviceTests.forEach { deviceTest ->
+                    variant.deviceTests.forEach { (_, deviceTest) ->
                         registerAndAddToBuildOnServer(deviceTest.name, deviceTest.artifacts)
                     }
                 }

@@ -20,12 +20,19 @@ import android.annotation.TargetApi
 import android.content.Context
 import android.os.Build
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.aggregate.AggregationResult
+import androidx.health.connect.client.aggregate.AggregationResultGroupedByDuration
 import androidx.health.connect.client.impl.HealthConnectClientUpsideDownImpl
+import androidx.health.connect.client.impl.platform.toLocalTimeWithDefaultZoneFallback
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.metadata.DataOrigin
+import androidx.health.connect.client.request.AggregateGroupByDurationRequest
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Mass
+import androidx.health.connect.client.units.grams
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
@@ -35,6 +42,7 @@ import com.google.common.truth.Truth.assertThat
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.Period
 import java.time.ZoneOffset
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -72,7 +80,9 @@ class NutritionAggregationExtensionsTest {
     @Test
     fun aggregateNutritionTransFatTotal_noData() = runTest {
         val aggregationResult =
-            healthConnectClient.aggregateNutritionTransFatTotal(TimeRangeFilter.none(), emptySet())
+            healthConnectClient.aggregateNutritionTransFatTotal(
+                AggregateRequest(emptySet(), TimeRangeFilter.none(), emptySet())
+            )
 
         assertThat(NutritionRecord.TRANS_FAT_TOTAL in aggregationResult).isFalse()
         assertThat(aggregationResult.dataOrigins).isEmpty()
@@ -121,10 +131,157 @@ class NutritionAggregationExtensionsTest {
         )
 
         val aggregationResult =
-            healthConnectClient.aggregateNutritionTransFatTotal(TimeRangeFilter.none(), emptySet())
+            healthConnectClient.aggregateNutritionTransFatTotal(
+                AggregateRequest(emptySet(), TimeRangeFilter.none(), emptySet())
+            )
 
         assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL]).isEqualTo(Mass.grams(1.7))
         assertThat(aggregationResult.dataOrigins).containsExactly(DataOrigin(context.packageName))
+    }
+
+    @Test
+    fun aggregateNutritionTransFatTotal_groupByPeriod() = runTest {
+        healthConnectClient.insertRecords(
+            listOf(
+                NutritionRecord(
+                    startTime = START_TIME,
+                    endTime = START_TIME + 1.minutes,
+                    transFat = .3.grams,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                ),
+                NutritionRecord(
+                    startTime = START_TIME + 1.days + 2.minutes,
+                    endTime = START_TIME + 1.days + 3.minutes,
+                    transFat = null,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                ),
+                NutritionRecord(
+                    startTime = START_TIME + 3.days + 4.minutes,
+                    endTime = START_TIME + 3.days + 5.minutes,
+                    transFat = .4.grams,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                ),
+                NutritionRecord(
+                    startTime = START_TIME + 3.days + 6.minutes,
+                    endTime = START_TIME + 3.days + 7.minutes,
+                    transFat = .5.grams,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                )
+            )
+        )
+
+        val aggregationResult =
+            healthConnectClient.aggregateFallback(
+                AggregateGroupByPeriodRequest(
+                    metrics = setOf(NutritionRecord.TRANS_FAT_TOTAL),
+                    timeRangeFilter =
+                        TimeRangeFilter.after(
+                            START_TIME.toLocalTimeWithDefaultZoneFallback(ZoneOffset.UTC)
+                        ),
+                    timeRangeSlicer = Period.ofDays(1)
+                )
+            )
+
+        assertThat(aggregationResult).hasSize(2)
+
+        with(aggregationResult[0]) {
+            assertThat(startTime)
+                .isEqualTo(START_TIME.toLocalTimeWithDefaultZoneFallback(ZoneOffset.UTC))
+            assertThat(endTime)
+                .isEqualTo(
+                    START_TIME.toLocalTimeWithDefaultZoneFallback(ZoneOffset.UTC).plusDays(1)
+                )
+            assertThat(result[NutritionRecord.TRANS_FAT_TOTAL]).isEqualTo(.3.grams)
+            assertThat(result.dataOrigins).containsExactly(DataOrigin(context.packageName))
+        }
+
+        with(aggregationResult[1]) {
+            assertThat(startTime)
+                .isEqualTo(
+                    START_TIME.toLocalTimeWithDefaultZoneFallback(ZoneOffset.UTC).plusDays(3)
+                )
+            assertThat(endTime)
+                .isEqualTo(
+                    START_TIME.toLocalTimeWithDefaultZoneFallback(ZoneOffset.UTC).plusDays(4)
+                )
+            assertThat(result[NutritionRecord.TRANS_FAT_TOTAL]).isEqualTo(.9.grams)
+            assertThat(result.dataOrigins).containsExactly(DataOrigin(context.packageName))
+        }
+    }
+
+    @Test
+    fun aggregateNutritionTransFatTotal_groupByDuration() = runTest {
+        healthConnectClient.insertRecords(
+            listOf(
+                NutritionRecord(
+                    startTime = START_TIME,
+                    endTime = START_TIME + 1.minutes,
+                    transFat = .3.grams,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                ),
+                NutritionRecord(
+                    startTime = START_TIME + 1.hours + 2.minutes,
+                    endTime = START_TIME + 1.hours + 3.minutes,
+                    transFat = null,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                ),
+                NutritionRecord(
+                    startTime = START_TIME + 3.hours + 4.minutes,
+                    endTime = START_TIME + 3.hours + 5.minutes,
+                    transFat = .4.grams,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                ),
+                NutritionRecord(
+                    startTime = START_TIME + 3.hours + 6.minutes,
+                    endTime = START_TIME + 3.hours + 7.minutes,
+                    transFat = .5.grams,
+                    startZoneOffset = ZoneOffset.UTC,
+                    endZoneOffset = ZoneOffset.UTC
+                )
+            )
+        )
+
+        val aggregationResult =
+            healthConnectClient.aggregateFallback(
+                AggregateGroupByDurationRequest(
+                    metrics = setOf(NutritionRecord.TRANS_FAT_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.after(START_TIME),
+                    timeRangeSlicer = 1.hours
+                )
+            )
+
+        assertThat(aggregationResult)
+            .containsExactly(
+                AggregationResultGroupedByDuration(
+                    startTime = START_TIME,
+                    endTime = START_TIME + 1.hours,
+                    zoneOffset = ZoneOffset.UTC,
+                    result =
+                        AggregationResult(
+                            longValues = emptyMap(),
+                            doubleValues = mapOf(NutritionRecord.TRANS_FAT_TOTAL.metricKey to .3),
+                            dataOrigins = setOf(DataOrigin(context.packageName))
+                        )
+                ),
+                AggregationResultGroupedByDuration(
+                    startTime = START_TIME + 3.hours,
+                    endTime = START_TIME + 4.hours,
+                    zoneOffset = ZoneOffset.UTC,
+                    result =
+                        AggregationResult(
+                            longValues = emptyMap(),
+                            doubleValues = mapOf(NutritionRecord.TRANS_FAT_TOTAL.metricKey to .9),
+                            dataOrigins = setOf(DataOrigin(context.packageName))
+                        )
+                )
+            )
     }
 
     @Test
@@ -171,11 +328,14 @@ class NutritionAggregationExtensionsTest {
 
         val aggregationResult =
             healthConnectClient.aggregateNutritionTransFatTotal(
-                TimeRangeFilter.between(
-                    START_TIME + 30.seconds,
-                    START_TIME + 6.minutes + 45.seconds
-                ),
-                emptySet()
+                AggregateRequest(
+                    emptySet(),
+                    TimeRangeFilter.between(
+                        START_TIME + 30.seconds,
+                        START_TIME + 6.minutes + 45.seconds
+                    ),
+                    emptySet()
+                )
             )
 
         assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL])
@@ -207,8 +367,11 @@ class NutritionAggregationExtensionsTest {
 
             val aggregationResult =
                 healthConnectClient.aggregateNutritionTransFatTotal(
-                    TimeRangeFilter.between(START_TIME + 1.minutes, START_TIME + 2.minutes),
-                    emptySet()
+                    AggregateRequest(
+                        emptySet(),
+                        TimeRangeFilter.between(START_TIME + 1.minutes, START_TIME + 2.minutes),
+                        emptySet()
+                    )
                 )
 
             assertThat(NutritionRecord.TRANS_FAT_TOTAL in aggregationResult).isFalse()
@@ -239,8 +402,11 @@ class NutritionAggregationExtensionsTest {
 
             val aggregationResult =
                 healthConnectClient.aggregateNutritionTransFatTotal(
-                    TimeRangeFilter.between(START_TIME, START_TIME + 2.minutes),
-                    emptySet()
+                    AggregateRequest(
+                        emptySet(),
+                        TimeRangeFilter.between(START_TIME, START_TIME + 2.minutes),
+                        emptySet()
+                    )
                 )
 
             assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL])
@@ -266,8 +432,11 @@ class NutritionAggregationExtensionsTest {
 
             val aggregationResult =
                 healthConnectClient.aggregateNutritionTransFatTotal(
-                    TimeRangeFilter.between(START_TIME + 15.seconds, START_TIME + 45.seconds),
-                    emptySet()
+                    AggregateRequest(
+                        emptySet(),
+                        TimeRangeFilter.between(START_TIME + 15.seconds, START_TIME + 45.seconds),
+                        emptySet()
+                    )
                 )
 
             assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL])
@@ -320,11 +489,14 @@ class NutritionAggregationExtensionsTest {
 
         val aggregationResult =
             healthConnectClient.aggregateNutritionTransFatTotal(
-                TimeRangeFilter.between(
-                    LocalDateTime.ofInstant(START_TIME + 30.seconds, ZoneOffset.UTC),
-                    LocalDateTime.ofInstant(START_TIME + 6.minutes + 45.seconds, ZoneOffset.UTC)
-                ),
-                emptySet()
+                AggregateRequest(
+                    emptySet(),
+                    TimeRangeFilter.between(
+                        LocalDateTime.ofInstant(START_TIME + 30.seconds, ZoneOffset.UTC),
+                        LocalDateTime.ofInstant(START_TIME + 6.minutes + 45.seconds, ZoneOffset.UTC)
+                    ),
+                    emptySet()
+                )
             )
 
         assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL])
@@ -349,17 +521,20 @@ class NutritionAggregationExtensionsTest {
 
             val aggregationResult =
                 healthConnectClient.aggregateNutritionTransFatTotal(
-                    TimeRangeFilter.between(
-                        LocalDateTime.ofInstant(
-                            START_TIME - 2.hours + 15.seconds,
-                            ZoneOffset.ofHours(2)
+                    AggregateRequest(
+                        emptySet(),
+                        TimeRangeFilter.between(
+                            LocalDateTime.ofInstant(
+                                START_TIME - 2.hours + 15.seconds,
+                                ZoneOffset.ofHours(2)
+                            ),
+                            LocalDateTime.ofInstant(
+                                START_TIME - 2.hours + 45.seconds,
+                                ZoneOffset.ofHours(2)
+                            )
                         ),
-                        LocalDateTime.ofInstant(
-                            START_TIME - 2.hours + 45.seconds,
-                            ZoneOffset.ofHours(2)
-                        )
-                    ),
-                    emptySet()
+                        emptySet()
+                    )
                 )
 
             assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL])
@@ -385,8 +560,11 @@ class NutritionAggregationExtensionsTest {
 
         val aggregationResult =
             healthConnectClient.aggregateNutritionTransFatTotal(
-                TimeRangeFilter.none(),
-                setOf(DataOrigin(context.packageName))
+                AggregateRequest(
+                    emptySet(),
+                    TimeRangeFilter.none(),
+                    setOf(DataOrigin(context.packageName))
+                )
             )
 
         assertThat(aggregationResult[NutritionRecord.TRANS_FAT_TOTAL]).isEqualTo(Mass.grams(0.5))
@@ -409,8 +587,11 @@ class NutritionAggregationExtensionsTest {
 
         val aggregationResult =
             healthConnectClient.aggregateNutritionTransFatTotal(
-                TimeRangeFilter.after(START_TIME + 2.minutes),
-                emptySet()
+                AggregateRequest(
+                    emptySet(),
+                    TimeRangeFilter.after(START_TIME + 2.minutes),
+                    emptySet()
+                )
             )
 
         assertThat(NutritionRecord.TRANS_FAT_TOTAL in aggregationResult).isFalse()
@@ -433,11 +614,14 @@ class NutritionAggregationExtensionsTest {
 
         val aggregationResult =
             healthConnectClient.aggregateNutritionTransFatTotal(
-                TimeRangeFilter.between(
-                    LocalDateTime.ofInstant(START_TIME, ZoneOffset.UTC),
-                    LocalDateTime.ofInstant(START_TIME + 60.minutes, ZoneOffset.UTC)
-                ),
-                emptySet()
+                AggregateRequest(
+                    emptySet(),
+                    TimeRangeFilter.between(
+                        LocalDateTime.ofInstant(START_TIME, ZoneOffset.UTC),
+                        LocalDateTime.ofInstant(START_TIME + 60.minutes, ZoneOffset.UTC)
+                    ),
+                    emptySet()
+                )
             )
 
         assertThat(NutritionRecord.TRANS_FAT_TOTAL in aggregationResult).isFalse()
@@ -460,13 +644,19 @@ class NutritionAggregationExtensionsTest {
 
         val aggregationResult =
             healthConnectClient.aggregateNutritionTransFatTotal(
-                TimeRangeFilter.none(),
-                setOf(DataOrigin("some random package name"))
+                AggregateRequest(
+                    emptySet(),
+                    TimeRangeFilter.none(),
+                    setOf(DataOrigin("some random package name"))
+                )
             )
 
         assertThat(NutritionRecord.TRANS_FAT_TOTAL in aggregationResult).isFalse()
         assertThat(aggregationResult.dataOrigins).isEmpty()
     }
+
+    private val Int.days: Duration
+        get() = Duration.ofDays(this.toLong())
 
     private val Int.seconds: Duration
         get() = Duration.ofSeconds(this.toLong())

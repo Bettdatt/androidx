@@ -33,6 +33,7 @@ import androidx.wear.compose.material3.TextButton
 import androidx.wear.compose.material3.TextButtonDefaults
 import androidx.wear.compose.material3.samples.FilledTextButtonSample
 import androidx.wear.compose.material3.samples.FilledTonalTextButtonSample
+import androidx.wear.compose.material3.samples.FilledVariantTextButtonSample
 import androidx.wear.compose.material3.samples.LargeFilledTonalTextButtonSample
 import androidx.wear.compose.material3.samples.OutlinedTextButtonSample
 import androidx.wear.compose.material3.samples.TextButtonSample
@@ -79,6 +80,20 @@ fun TextButtonDemo() {
                 }
             }
         }
+        item { ListHeader { Text("Filled Variant") } }
+        item {
+            Row {
+                FilledVariantTextButtonSample()
+                Spacer(modifier = Modifier.width(5.dp))
+                TextButton(
+                    onClick = {},
+                    enabled = false,
+                    colors = TextButtonDefaults.filledVariantTextButtonColors()
+                ) {
+                    Text(text = "ABC")
+                }
+            }
+        }
         item { ListHeader { Text("Outlined") } }
         item {
             Row {
@@ -96,6 +111,26 @@ fun TextButtonDemo() {
         }
         item { ListHeader { Text("With onLongClick") } }
         item { TextButtonWithOnLongClickSample { showOnLongClickToast(context) } }
+        item { ListHeader { Text("Animated") } }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = {},
+                    colors = TextButtonDefaults.filledTextButtonColors(),
+                    shapes = TextButtonDefaults.animatedShapes(),
+                ) {
+                    Text(text = "ABC")
+                }
+                Spacer(modifier = Modifier.width(5.dp))
+                TextButton(
+                    onClick = {},
+                    colors = TextButtonDefaults.filledVariantTextButtonColors(),
+                    shapes = TextButtonDefaults.animatedShapes(),
+                ) {
+                    Text(text = "ABC")
+                }
+            }
+        }
         item { ListHeader { Text("Sizes") } }
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {

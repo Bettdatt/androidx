@@ -18,12 +18,15 @@ package androidx.pdf.viewer;
 
 import android.content.Context;
 
-import androidx.annotation.NonNull;
+import androidx.pdf.find.FindInFileView;
+import androidx.pdf.metrics.EventCallback;
 import androidx.pdf.models.Dimensions;
 import androidx.pdf.util.TileBoard;
 import androidx.pdf.viewer.loader.PdfLoader;
 import androidx.pdf.widget.MosaicView;
 import androidx.pdf.widget.ZoomView;
+
+import org.jspecify.annotations.NonNull;
 
 public class MockPageViewAccessbilityEnabledFactory extends PageViewFactory {
 
@@ -31,13 +34,16 @@ public class MockPageViewAccessbilityEnabledFactory extends PageViewFactory {
             @NonNull Context context,
             @NonNull PdfLoader pdfLoader,
             @NonNull PaginatedView paginatedView,
-            @NonNull ZoomView zoomView) {
-        super(context, pdfLoader, paginatedView, zoomView);
+            @NonNull ZoomView zoomView,
+            @NonNull SingleTapHandler singleTapHandler,
+            @NonNull FindInFileView findInFileView,
+            @NonNull EventCallback eventCallback) {
+        super(context, pdfLoader, paginatedView, zoomView, singleTapHandler, findInFileView,
+                eventCallback);
     }
 
-    @NonNull
     @Override
-    protected MosaicView.BitmapSource createBitmapSource(int pageNum) {
+    protected MosaicView.@NonNull BitmapSource createBitmapSource(int pageNum) {
         return new MosaicView.BitmapSource() {
             @Override
             public void requestPageBitmap(@NonNull Dimensions pageSize,

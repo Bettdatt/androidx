@@ -18,10 +18,11 @@ package androidx.room.vo
 
 import androidx.room.compiler.codegen.CodeLanguage
 import androidx.room.compiler.codegen.XCodeBlock
+import androidx.room.compiler.codegen.XCodeBlock.Builder.Companion.applyTo
 import androidx.room.compiler.processing.XType
 import androidx.room.ext.capitalize
 import androidx.room.solver.CodeGenScope
-import androidx.room.solver.types.CursorValueReader
+import androidx.room.solver.types.StatementValueReader
 import java.util.Locale
 
 data class FieldSetter(
@@ -34,28 +35,28 @@ data class FieldSetter(
         if (callType == CallType.CONSTRUCTOR) {
             return
         }
-        when (builder.language) {
-            CodeLanguage.JAVA -> {
-                val stmt =
-                    when (callType) {
-                        CallType.FIELD -> "%L.%L = %L"
-                        CallType.METHOD,
-                        CallType.SYNTHETIC_METHOD -> "%L.%L(%L)"
-                        else -> error("Unknown call type: $callType")
-                    }
-                builder.addStatement(stmt, ownerVar, jvmName, inVar)
-            }
-            CodeLanguage.KOTLIN -> {
-                builder.addStatement("%L.%L = %L", ownerVar, fieldName, inVar)
+        builder.applyTo { language ->
+            when (language) {
+                CodeLanguage.JAVA -> {
+                    val stmt =
+                        when (callType) {
+                            CallType.FIELD -> "%L.%L = %L"
+                            CallType.METHOD,
+                            CallType.SYNTHETIC_METHOD -> "%L.%L(%L)"
+                            else -> error("Unknown call type: $callType")
+                        }
+                    addStatement(stmt, ownerVar, jvmName, inVar)
+                }
+                CodeLanguage.KOTLIN -> addStatement("%L.%L = %L", ownerVar, fieldName, inVar)
             }
         }
     }
 
-    fun writeSetFromCursor(
+    fun writeSetFromStatement(
         ownerVar: String,
-        cursorVar: String,
+        stmtVar: String,
         indexVar: String,
-        reader: CursorValueReader,
+        reader: StatementValueReader,
         scope: CodeGenScope
     ) {
         when (scope.language) {
@@ -63,14 +64,14 @@ data class FieldSetter(
                 when (callType) {
                     CallType.FIELD -> {
                         val outFieldName = "$ownerVar.$jvmName"
-                        reader.readFromCursor(outFieldName, cursorVar, indexVar, scope)
+                        reader.readFromStatement(outFieldName, stmtVar, indexVar, scope)
                     }
                     CallType.METHOD,
                     CallType.SYNTHETIC_METHOD -> {
                         val tmpField = scope.getTmpVar("_tmp${fieldName.capitalize(Locale.US)}")
                         scope.builder.apply {
                             addLocalVariable(tmpField, type.asTypeName())
-                            reader.readFromCursor(tmpField, cursorVar, indexVar, scope)
+                            reader.readFromStatement(tmpField, stmtVar, indexVar, scope)
                             addStatement("%L.%L(%L)", ownerVar, jvmName, tmpField)
                         }
                     }
@@ -83,13 +84,13 @@ data class FieldSetter(
                     CallType.FIELD,
                     CallType.SYNTHETIC_METHOD -> {
                         val outFieldName = "$ownerVar.$fieldName"
-                        reader.readFromCursor(outFieldName, cursorVar, indexVar, scope)
+                        reader.readFromStatement(outFieldName, stmtVar, indexVar, scope)
                     }
                     CallType.METHOD -> {
                         val tmpField = scope.getTmpVar("_tmp${fieldName.capitalize(Locale.US)}")
                         scope.builder.apply {
                             addLocalVariable(tmpField, type.asTypeName())
-                            reader.readFromCursor(tmpField, cursorVar, indexVar, scope)
+                            reader.readFromStatement(tmpField, stmtVar, indexVar, scope)
                             addStatement("%L.%L(%L)", ownerVar, jvmName, tmpField)
                         }
                     }

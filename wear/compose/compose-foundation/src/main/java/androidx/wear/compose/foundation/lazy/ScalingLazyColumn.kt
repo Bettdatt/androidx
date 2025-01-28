@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.util.fastFirstOrNull
 import androidx.wear.compose.foundation.BasicSwipeToDismissBox
-import androidx.wear.compose.foundation.ExperimentalWearFoundationApi
 import androidx.wear.compose.foundation.HierarchicalFocusCoordinator
 import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.foundation.rememberActiveFocusRequester
@@ -80,7 +79,7 @@ public sealed interface ScalingLazyListScope {
      *   visible one.
      * @param content the content of the item
      */
-    fun item(key: Any? = null, content: @Composable ScalingLazyListItemScope.() -> Unit)
+    public fun item(key: Any? = null, content: @Composable ScalingLazyListItemScope.() -> Unit)
 
     /**
      * Adds a [count] of items.
@@ -94,7 +93,7 @@ public sealed interface ScalingLazyListScope {
      *   as the first visible one.
      * @param itemContent the content displayed by a single item
      */
-    fun items(
+    public fun items(
         count: Int,
         key: ((index: Int) -> Any)? = null,
         itemContent: @Composable ScalingLazyListItemScope.(index: Int) -> Unit
@@ -113,11 +112,11 @@ public sealed interface ScalingLazyListScope {
  *   visible one.
  * @param itemContent the content displayed by a single item
  */
-inline fun <T> ScalingLazyListScope.items(
+public inline fun <T> ScalingLazyListScope.items(
     items: List<T>,
     noinline key: ((item: T) -> Any)? = null,
     crossinline itemContent: @Composable ScalingLazyListItemScope.(item: T) -> Unit
-) =
+): Unit =
     items(items.size, if (key != null) { index: Int -> key(items[index]) } else null) {
         itemContent(items[it])
     }
@@ -134,11 +133,11 @@ inline fun <T> ScalingLazyListScope.items(
  *   visible one.
  * @param itemContent the content displayed by a single item
  */
-inline fun <T> ScalingLazyListScope.itemsIndexed(
+public inline fun <T> ScalingLazyListScope.itemsIndexed(
     items: List<T>,
     noinline key: ((index: Int, item: T) -> Any)? = null,
     crossinline itemContent: @Composable ScalingLazyListItemScope.(index: Int, item: T) -> Unit
-) =
+): Unit =
     items(items.size, if (key != null) { index: Int -> key(index, items[index]) } else null) {
         itemContent(it, items[it])
     }
@@ -155,11 +154,11 @@ inline fun <T> ScalingLazyListScope.itemsIndexed(
  *   visible one.
  * @param itemContent the content displayed by a single item
  */
-inline fun <T> ScalingLazyListScope.items(
+public inline fun <T> ScalingLazyListScope.items(
     items: Array<T>,
     noinline key: ((item: T) -> Any)? = null,
     crossinline itemContent: @Composable ScalingLazyListItemScope.(item: T) -> Unit
-) =
+): Unit =
     items(items.size, if (key != null) { index: Int -> key(items[index]) } else null) {
         itemContent(items[it])
     }
@@ -180,7 +179,7 @@ public inline fun <T> ScalingLazyListScope.itemsIndexed(
     items: Array<T>,
     noinline key: ((index: Int, item: T) -> Any)? = null,
     crossinline itemContent: @Composable ScalingLazyListItemScope.(index: Int, item: T) -> Unit
-) =
+): Unit =
     items(items.size, if (key != null) { index: Int -> key(index, items[index]) } else null) {
         itemContent(it, items[it])
     }
@@ -189,16 +188,16 @@ public inline fun <T> ScalingLazyListScope.itemsIndexed(
 @kotlin.jvm.JvmInline
 public value class ScalingLazyListAnchorType internal constructor(internal val type: Int) {
 
-    companion object {
+    public companion object {
         /** Place the center of the item on (or as close to) the center line of the viewport */
-        val ItemCenter = ScalingLazyListAnchorType(0)
+        public val ItemCenter: ScalingLazyListAnchorType = ScalingLazyListAnchorType(0)
 
         /**
          * Place the start (edge) of the item on, or as close to as possible, the center line of the
          * viewport. For normal layout this will be the top edge of the item, for reverseLayout it
          * will be the bottom edge.
          */
-        val ItemStart = ScalingLazyListAnchorType(1)
+        public val ItemStart: ScalingLazyListAnchorType = ScalingLazyListAnchorType(1)
     }
 
     override fun toString(): String {
@@ -399,9 +398,7 @@ public fun ScalingLazyColumn(
  * [ScalingLazyColumn] should be wrapped by [HierarchicalFocusCoordinator]. By default
  * [HierarchicalFocusCoordinator] is already implemented in [BasicSwipeToDismissBox], which is a
  * part of material Scaffold - meaning that rotary will be able to request a focus without any
- * additional changes. Another FocusRequester can be added through Modifier chain by adding
- * `.focusRequester(focusRequester)`. Do not call `focusable()` or `focusTarget()` after it as this
- * will reset the focusRequester chain and rotary support will not be available.
+ * additional changes.
  *
  * Example of a [ScalingLazyColumn] with default parameters:
  *
@@ -461,12 +458,12 @@ public fun ScalingLazyColumn(
  *   [flingBehavior] parameter that controls touch scroll are expected to produce similar list
  *   scrolling. For example, if [rotaryScrollableBehavior] is set for snap (using
  *   [RotaryScrollableDefaults.snapBehavior]), [flingBehavior] should be set for snap as well (using
- *   [ScalingLazyColumnDefaults.snapFlingBehavior]). Can be null if rotary support is not required.
+ *   [ScalingLazyColumnDefaults.snapFlingBehavior]). Can be null if rotary support is not required
+ *   or when it should be handled externally - with a separate [Modifier.rotaryScrollable] modifier.
  * @param content The content of the [ScalingLazyColumn]
  */
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
-fun ScalingLazyColumn(
+public fun ScalingLazyColumn(
     modifier: Modifier = Modifier,
     state: ScalingLazyListState = rememberScalingLazyListState(),
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp),
@@ -488,7 +485,7 @@ fun ScalingLazyColumn(
     var initialized by remember { mutableStateOf(false) }
     BoxWithConstraints(
         modifier =
-            if (rotaryScrollableBehavior != null)
+            if (rotaryScrollableBehavior != null && userScrollEnabled)
                 modifier.rotaryScrollable(
                     behavior = rotaryScrollableBehavior,
                     focusRequester = rememberActiveFocusRequester(),
@@ -503,7 +500,7 @@ fun ScalingLazyColumn(
         val extraPaddingInPixels = scalingParams.resolveViewportVerticalOffset(constraints)
 
         val actualScalingParams =
-            if (reduceMotion.enabled()) ReduceMotionScalingParams(scalingParams) else scalingParams
+            if (reduceMotion) ReduceMotionScalingParams(scalingParams) else scalingParams
 
         with(density) {
             val extraPadding = extraPaddingInPixels.toDp()
@@ -702,7 +699,7 @@ public object ScalingLazyColumnDefaults {
      *   content items available to be rendered. By default will be 5% of the maxHeight of the
      *   viewport above and below the content.
      */
-    fun scalingParams(
+    public fun scalingParams(
         edgeScale: Float = 0.7f,
         edgeAlpha: Float = 0.5f,
         minElementHeight: Float = 0.2f,
@@ -827,8 +824,8 @@ private fun ScalingLazyColumnItemWrapper(
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 @Immutable
 public class CombinedPaddingValues(
-    @Stable val contentPadding: PaddingValues,
-    @Stable val extraPadding: Dp
+    @Stable public val contentPadding: PaddingValues,
+    @Stable public val extraPadding: Dp
 ) : PaddingValues {
     override fun calculateLeftPadding(layoutDirection: LayoutDirection): Dp =
         contentPadding.calculateLeftPadding(layoutDirection)
@@ -869,7 +866,7 @@ public class CombinedPaddingValues(
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public fun Modifier.verticalNegativePadding(
     extraPadding: Dp,
-) = layout { measurable, constraints ->
+): Modifier = layout { measurable, constraints ->
     require(constraints.hasBoundedHeight) { "height should be bounded" }
     val topAndBottomPadding = (extraPadding * 2).roundToPx()
     val placeable =

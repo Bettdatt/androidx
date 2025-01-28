@@ -23,6 +23,7 @@ import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextMotion
 import androidx.wear.compose.material3.tokens.TypographyKeyTokens
 import androidx.wear.compose.material3.tokens.TypographyTokens
 
@@ -31,10 +32,7 @@ import androidx.wear.compose.material3.tokens.TypographyTokens
  *
  * The text styles in this typography are scaled according to the user's preferred font size in the
  * system settings. Larger font sizes can be fixed if necessary in order to avoid pressure on screen
- * space, because they are already sufficiently accessible. Here is an example of fixing the font
- * size for DisplayLarge:
- *
- * @sample androidx.wear.compose.material3.samples.FixedFontSize
+ * space, because they are already sufficiently accessible.
  *
  * Display styles are utilized for large, short strings of text used to display highly glanceable
  * hero information, significant metrics, confidence or expressive brand moments.
@@ -56,6 +54,9 @@ import androidx.wear.compose.material3.tokens.TypographyTokens
  * Arc text styles are used for curved text making up the signposting on the UI such as time text
  * and curved labels, a tailored font axis that specifically optimizes type along a curve.
  *
+ * @property arcLarge ArcLarge is for arc headers and titles. Arc is for text along a curved path on
+ *   the screen, reserved for short header text strings at the very top or bottom of the screen like
+ *   confirmation overlays.
  * @property arcMedium ArcMedium is for arc headers and titles. Arc is for text along a curved path
  *   on the screen, reserved for short header text strings at the very top or bottom of the screen
  *   like page titles.
@@ -106,35 +107,36 @@ import androidx.wear.compose.material3.tokens.TypographyTokens
  * @property numeralExtraSmall NumeralExtraSmall is the smallest role for digits. Numerals use
  *   tabular spacing by default. They are for numbers that need to accommodate longer strings of
  *   digits, where no localization is required like in-workout metrics.
- *
- * TODO(b/273526150) Review documentation for typography, add examples for each size.
  */
+// TODO(b/273526150) Review documentation for typography, add examples for each size.
 @Immutable
-class Typography
+public class Typography
 internal constructor(
-    val arcMedium: TextStyle,
-    val arcSmall: TextStyle,
-    val displayLarge: TextStyle,
-    val displayMedium: TextStyle,
-    val displaySmall: TextStyle,
-    val titleLarge: TextStyle,
-    val titleMedium: TextStyle,
-    val titleSmall: TextStyle,
-    val labelLarge: TextStyle,
-    val labelMedium: TextStyle,
-    val labelSmall: TextStyle,
-    val bodyLarge: TextStyle,
-    val bodyMedium: TextStyle,
-    val bodySmall: TextStyle,
-    val bodyExtraSmall: TextStyle,
-    val numeralExtraLarge: TextStyle,
-    val numeralLarge: TextStyle,
-    val numeralMedium: TextStyle,
-    val numeralSmall: TextStyle,
-    val numeralExtraSmall: TextStyle,
+    public val arcLarge: TextStyle,
+    public val arcMedium: TextStyle,
+    public val arcSmall: TextStyle,
+    public val displayLarge: TextStyle,
+    public val displayMedium: TextStyle,
+    public val displaySmall: TextStyle,
+    public val titleLarge: TextStyle,
+    public val titleMedium: TextStyle,
+    public val titleSmall: TextStyle,
+    public val labelLarge: TextStyle,
+    public val labelMedium: TextStyle,
+    public val labelSmall: TextStyle,
+    public val bodyLarge: TextStyle,
+    public val bodyMedium: TextStyle,
+    public val bodySmall: TextStyle,
+    public val bodyExtraSmall: TextStyle,
+    public val numeralExtraLarge: TextStyle,
+    public val numeralLarge: TextStyle,
+    public val numeralMedium: TextStyle,
+    public val numeralSmall: TextStyle,
+    public val numeralExtraSmall: TextStyle,
 ) {
-    constructor(
+    public constructor(
         defaultFontFamily: FontFamily = FontFamily.Default,
+        arcLarge: TextStyle = TypographyTokens.ArcLarge,
         arcMedium: TextStyle = TypographyTokens.ArcMedium,
         arcSmall: TextStyle = TypographyTokens.ArcSmall,
         displayLarge: TextStyle = TypographyTokens.DisplayLarge,
@@ -156,6 +158,7 @@ internal constructor(
         numeralSmall: TextStyle = TypographyTokens.NumeralSmall,
         numeralExtraSmall: TextStyle = TypographyTokens.NumeralExtraSmall,
     ) : this(
+        arcLarge = arcLarge.withDefaultFontFamily(defaultFontFamily),
         arcMedium = arcMedium.withDefaultFontFamily(defaultFontFamily),
         arcSmall = arcSmall.withDefaultFontFamily(defaultFontFamily),
         displayLarge = displayLarge.withDefaultFontFamily(defaultFontFamily),
@@ -179,7 +182,8 @@ internal constructor(
     )
 
     /** Returns a copy of this Typography, optionally overriding some of the values. */
-    fun copy(
+    public fun copy(
+        arcLarge: TextStyle = this.arcLarge,
         arcMedium: TextStyle = this.arcMedium,
         arcSmall: TextStyle = this.arcSmall,
         displayLarge: TextStyle = this.displayLarge,
@@ -202,6 +206,7 @@ internal constructor(
         numeralExtraSmall: TextStyle = this.numeralExtraSmall,
     ): Typography =
         Typography(
+            arcLarge,
             arcMedium,
             arcSmall,
             displayLarge,
@@ -228,6 +233,7 @@ internal constructor(
         if (this === other) return true
         if (other !is Typography) return false
 
+        if (arcLarge != other.arcLarge) return false
         if (arcMedium != other.arcMedium) return false
         if (arcSmall != other.arcSmall) return false
         if (displayLarge != other.displayLarge) return false
@@ -253,7 +259,8 @@ internal constructor(
     }
 
     override fun hashCode(): Int {
-        var result = arcMedium.hashCode()
+        var result = arcLarge.hashCode()
+        result = 31 * result + arcMedium.hashCode()
         result = 31 * result + arcSmall.hashCode()
         result = 31 * result + displayLarge.hashCode()
         result = 31 * result + displayMedium.hashCode()
@@ -278,6 +285,7 @@ internal constructor(
 
     override fun toString(): String {
         return "Typography(" +
+            "arcLarge=$arcLarge, " +
             "arcMedium=$arcMedium, " +
             "arcSmall=$arcSmall, " +
             "displayLarge=$displayLarge, " +
@@ -322,11 +330,13 @@ internal val DefaultTextStyle =
     TextStyle.Default.copy(
         platformStyle = PlatformTextStyle(includeFontPadding = DefaultIncludeFontPadding),
         lineHeightStyle = DefaultLineHeightStyle,
+        textMotion = TextMotion.Animated,
     )
 
 /** Helper function for typography tokens. */
 internal fun Typography.fromToken(value: TypographyKeyTokens): TextStyle {
     return when (value) {
+        TypographyKeyTokens.ArcLarge -> arcLarge
         TypographyKeyTokens.ArcMedium -> arcMedium
         TypographyKeyTokens.ArcSmall -> arcSmall
         TypographyKeyTokens.DisplayLarge -> displayLarge

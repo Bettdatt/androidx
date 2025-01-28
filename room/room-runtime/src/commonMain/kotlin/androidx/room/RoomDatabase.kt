@@ -22,7 +22,6 @@ import androidx.annotation.RestrictTo
 import androidx.room.concurrent.CloseBarrier
 import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
-import androidx.room.util.isAssignableFrom
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.SQLiteException
@@ -90,7 +89,7 @@ expect abstract class RoomDatabase() {
      *
      * @return A new delegate to be used while opening the database
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) // used in generated code
     protected open fun createOpenDelegate(): RoomOpenDelegateMarker
 
     /**
@@ -103,7 +102,7 @@ expect abstract class RoomDatabase() {
      */
     protected abstract fun createInvalidationTracker(): InvalidationTracker
 
-    internal fun getCoroutineScope(): CoroutineScope
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) fun getCoroutineScope(): CoroutineScope
 
     /**
      * Returns a Set of required [AutoMigrationSpec] classes.
@@ -114,7 +113,7 @@ expect abstract class RoomDatabase() {
      * @return Creates a set that will include the classes of all required auto migration specs for
      *   this database.
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) // used in generated code
     open fun getRequiredAutoMigrationSpecClasses(): Set<KClass<out AutoMigrationSpec>>
 
     /**
@@ -126,7 +125,7 @@ expect abstract class RoomDatabase() {
      * @param autoMigrationSpecs the provided specs needed by certain migrations.
      * @return A list of migration instances each of which is a generated 'auto migration'.
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) // used in generated code
     open fun createAutoMigrations(
         autoMigrationSpecs: Map<KClass<out AutoMigrationSpec>, AutoMigrationSpec>
     ): List<Migration>
@@ -140,7 +139,8 @@ expect abstract class RoomDatabase() {
      * @param T The type of the expected Type Converter subclass.
      * @return An instance of T.
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP) fun <T : Any> getTypeConverter(klass: KClass<T>): T
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) // used in generated code
+    fun <T : Any> getTypeConverter(klass: KClass<T>): T
 
     /**
      * Adds a provided type converter to be used in the database DAOs.
@@ -160,7 +160,7 @@ expect abstract class RoomDatabase() {
      *
      * @return A map that will include all required type converters for this database.
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) // used in generated code
     protected open fun getRequiredTypeConverterClasses(): Map<KClass<*>, List<KClass<*>>>
 
     /** Property delegate of [getRequiredTypeConverterClasses] for common ext functionality. */
@@ -172,7 +172,7 @@ expect abstract class RoomDatabase() {
      *
      * @param connection The database connection.
      */
-    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+    @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX) // used in generated code
     protected fun internalInitInvalidationTracker(connection: SQLiteConnection)
 
     /**
@@ -522,8 +522,7 @@ internal fun RoomDatabase.validateAutoMigrations(configuration: DatabaseConfigur
         var foundIndex = -1
         for (providedIndex in configuration.autoMigrationSpecs.indices.reversed()) {
             val provided: Any = configuration.autoMigrationSpecs[providedIndex]
-            // TODO(b/317210564): For native only FQN is compared
-            if (spec.isAssignableFrom(provided::class)) {
+            if (spec.isInstance(provided)) {
                 foundIndex = providedIndex
                 usedSpecs[foundIndex] = true
                 break
@@ -568,7 +567,7 @@ internal fun RoomDatabase.validateTypeConverters(configuration: DatabaseConfigur
             // traverse provided converters in reverse so that newer one overrides
             for (providedIndex in configuration.typeConverters.indices.reversed()) {
                 val provided = configuration.typeConverters[providedIndex]
-                if (converter.isAssignableFrom(provided::class)) {
+                if (converter.isInstance(provided)) {
                     foundIndex = providedIndex
                     used[foundIndex] = true
                     break
