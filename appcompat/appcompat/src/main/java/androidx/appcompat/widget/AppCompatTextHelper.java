@@ -23,11 +23,13 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.LocaleList;
+import android.text.TextUtils;
 import android.text.method.PasswordTransformationMethod;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -35,20 +37,24 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.TextView;
 
-import androidx.annotation.DoNotInline;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
+import androidx.annotation.UiThread;
 import androidx.appcompat.R;
+import androidx.collection.LruCache;
 import androidx.core.content.res.ResourcesCompat;
+import androidx.core.util.Pair;
 import androidx.core.util.TypedValueCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.inputmethod.EditorInfoCompat;
 import androidx.core.widget.TextViewCompat;
 
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
 import java.lang.ref.WeakReference;
 import java.util.Locale;
+import java.util.Objects;
 
 class AppCompatTextHelper {
 
@@ -59,8 +65,7 @@ class AppCompatTextHelper {
     private static final int SERIF = 2;
     private static final int MONOSPACE = 3;
 
-    @NonNull
-    private final TextView mView;
+    private final @NonNull TextView mView;
 
     private TintInfo mDrawableLeftTint;
     private TintInfo mDrawableTopTint;
@@ -70,14 +75,12 @@ class AppCompatTextHelper {
     private TintInfo mDrawableEndTint;
     private TintInfo mDrawableTint; // Tint used for all compound drawables
 
-    @NonNull
-    private final AppCompatTextViewAutoSizeHelper mAutoSizeTextHelper;
+    private final @NonNull AppCompatTextViewAutoSizeHelper mAutoSizeTextHelper;
 
     private int mStyle = Typeface.NORMAL;
     private int mFontWeight = TEXT_FONT_WEIGHT_UNSPECIFIED;
     private Typeface mFontTypeface;
-    @Nullable
-    private String mFontVariationSettings = null;
+    private @Nullable String mFontVariationSettings = null;
     private boolean mAsyncFontPending;
 
     AppCompatTextHelper(@NonNull TextView view) {
@@ -362,9 +365,6 @@ class AppCompatTextHelper {
         if (mFontVariationSettings != null && Build.VERSION.SDK_INT >= 26) {
             Api26Impl.setFontVariationSettings(mView, mFontVariationSettings);
         }
-
-        mFontVariationSettings = null;
-        mFontTypeface = null;
     }
 
     /**
@@ -459,11 +459,18 @@ class AppCompatTextHelper {
             }
             return true;
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                && mFontWeight != TEXT_FONT_WEIGHT_UNSPECIFIED && mFontTypeface != null) {
+            mFontTypeface = Api28Impl.create(mFontTypeface, mFontWeight,
+                    (mStyle & Typeface.ITALIC) != 0);
+            return true;
+        }
+
         return false;
     }
 
-    @NonNull
-    private ResourcesCompat.FontCallback makeFontCallback(int fontWeight, int style) {
+    private ResourcesCompat.@NonNull FontCallback makeFontCallback(int fontWeight, int style) {
         final WeakReference<TextView> textViewWeak = new WeakReference<>(mView);
         return new ResourcesCompat.FontCallback() {
             @Override
@@ -497,13 +504,29 @@ class AppCompatTextHelper {
                     textView.post(new Runnable() {
                         @Override
                         public void run() {
-                            textView.setTypeface(typeface, style);
+                            applyNewTypefacePreservingVariationSettings(textView, typeface, style);
                         }
                     });
                 } else {
-                    textView.setTypeface(typeface, mStyle);
+                    applyNewTypefacePreservingVariationSettings(textView, typeface, mStyle);
                 }
             }
+        }
+    }
+
+    private static void applyNewTypefacePreservingVariationSettings(TextView textView,
+            Typeface typeface, int style) {
+        String fontVariationSettings = null;
+        if (Build.VERSION.SDK_INT >= 26) {
+            fontVariationSettings = Api26Impl.getFontVariationSettings(textView);
+            if (!TextUtils.isEmpty(fontVariationSettings)) {
+                Api26Impl.setFontVariationSettings(textView, null);
+            }
+        }
+
+        textView.setTypeface(typeface, style);
+        if (Build.VERSION.SDK_INT >= 26 && !TextUtils.isEmpty(fontVariationSettings)) {
+            Api26Impl.setFontVariationSettings(textView, fontVariationSettings);
         }
     }
 
@@ -639,7 +662,7 @@ class AppCompatTextHelper {
                 autoSizeMinTextSize, autoSizeMaxTextSize, autoSizeStepGranularity, unit);
     }
 
-    void setAutoSizeTextTypeUniformWithPresetSizes(@NonNull int[] presetSizes, int unit)
+    void setAutoSizeTextTypeUniformWithPresetSizes(int @NonNull [] presetSizes, int unit)
             throws IllegalArgumentException {
         mAutoSizeTextHelper.setAutoSizeTextTypeUniformWithPresetSizes(presetSizes, unit);
     }
@@ -665,8 +688,7 @@ class AppCompatTextHelper {
         return mAutoSizeTextHelper.getAutoSizeTextAvailableSizes();
     }
 
-    @Nullable
-    ColorStateList getCompoundDrawableTintList() {
+    @Nullable ColorStateList getCompoundDrawableTintList() {
         return mDrawableTint != null ? mDrawableTint.mTintList : null;
     }
 
@@ -679,12 +701,11 @@ class AppCompatTextHelper {
         setCompoundTints();
     }
 
-    @Nullable
-    PorterDuff.Mode getCompoundDrawableTintMode() {
+    PorterDuff.@Nullable Mode getCompoundDrawableTintMode() {
         return mDrawableTint != null ? mDrawableTint.mTintMode : null;
     }
 
-    void setCompoundDrawableTintMode(@Nullable PorterDuff.Mode tintMode) {
+    void setCompoundDrawableTintMode(PorterDuff.@Nullable Mode tintMode) {
         if (mDrawableTint == null) {
             mDrawableTint = new TintInfo();
         }
@@ -758,21 +779,84 @@ class AppCompatTextHelper {
 
     @RequiresApi(26)
     static class Api26Impl {
+        /**
+         * Cache for variation instances created based on an existing Typeface
+         */
+        private static final LruCache<Pair<Typeface, String>, Typeface> sVariationsCache =
+                new LruCache<>(30);
+
+        /**
+         * Used to create variation instances; initialized lazily
+         */
+        private static @Nullable Paint sPaint;
+
         private Api26Impl() {
             // This class is not instantiable.
         }
 
-        @DoNotInline
+        static String getFontVariationSettings(TextView textView) {
+            return textView.getFontVariationSettings();
+        }
+
         static boolean setFontVariationSettings(TextView textView, String fontVariationSettings) {
+            if (Objects.equals(textView.getFontVariationSettings(), fontVariationSettings)) {
+                // textView will early-exit if we don't clear fontVariationSettings
+                textView.setFontVariationSettings("");
+            }
             return textView.setFontVariationSettings(fontVariationSettings);
         }
 
-        @DoNotInline
+        /**
+         * Create a new Typeface based on {@code baseTypeFace} with the specified variation
+         * settings.  Uses a cache to avoid memory scaling with the number of AppCompatTextViews.
+         *
+         * @param baseTypeface the original typeface, preferably without variations applied
+         *                     (used both to create the new instance, and as a cache key).
+         *                     Note: this method will correctly handle instances with variations
+         *                     applied, as we have no way of detecting that.  However, cache hit
+         *                     rates may be decreased.
+         * @param fontVariationSettings the new font variation settings.
+         *                              This is used as a cache key without sorting, to avoid
+         *                              additional per-TextView allocations to parse and sort the
+         *                              variation settings.  App developers should strive to provide
+         *                              the settings in the same order every time within their app,
+         *                              in order to get the best cache performance.
+         * @return the new instance, or {@code null} if
+         *         {@link Paint#setFontVariationSettings(String)} would return null for this
+         *         Typeface and font variation settings string.
+         */
+        @UiThread
+        static @Nullable Typeface createVariationInstance(@Nullable Typeface baseTypeface,
+                @Nullable String fontVariationSettings) {
+            Pair<Typeface, String> cacheKey = new Pair<>(baseTypeface, fontVariationSettings);
+
+            Typeface result = sVariationsCache.get(cacheKey);
+            if (result != null) {
+                return result;
+            }
+            Paint paint = sPaint != null ? sPaint : (sPaint = new Paint());
+
+            // Work around b/353609778
+            if (Objects.equals(paint.getFontVariationSettings(), fontVariationSettings)) {
+                paint.setFontVariationSettings(null);
+            }
+
+            // Use Paint to create a new Typeface based on an existing one
+            paint.setTypeface(baseTypeface);
+            boolean effective = paint.setFontVariationSettings(fontVariationSettings);
+            if (effective) {
+                result = paint.getTypeface();
+                sVariationsCache.put(cacheKey, result);
+                return result;
+            } else {
+                return null;
+            }
+        }
+
         static int getAutoSizeStepGranularity(TextView textView) {
             return textView.getAutoSizeStepGranularity();
         }
 
-        @DoNotInline
         static void setAutoSizeTextTypeUniformWithConfiguration(TextView textView,
                 int autoSizeMinTextSize, int autoSizeMaxTextSize, int autoSizeStepGranularity,
                 int unit) {
@@ -780,7 +864,6 @@ class AppCompatTextHelper {
                     autoSizeMaxTextSize, autoSizeStepGranularity, unit);
         }
 
-        @DoNotInline
         static void setAutoSizeTextTypeUniformWithPresetSizes(TextView textView, int[] presetSizes,
                 int unit) {
             textView.setAutoSizeTextTypeUniformWithPresetSizes(presetSizes, unit);
@@ -793,12 +876,10 @@ class AppCompatTextHelper {
             // This class is not instantiable.
         }
 
-        @DoNotInline
         static void setTextLocales(TextView textView, LocaleList locales) {
             textView.setTextLocales(locales);
         }
 
-        @DoNotInline
         static LocaleList forLanguageTags(String list) {
             return LocaleList.forLanguageTags(list);
         }
@@ -810,7 +891,6 @@ class AppCompatTextHelper {
             // This class is not instantiable.
         }
 
-        @DoNotInline
         static Locale forLanguageTag(String languageTag) {
             return Locale.forLanguageTag(languageTag);
         }
@@ -823,7 +903,6 @@ class AppCompatTextHelper {
             // This class is not instantiable.
         }
 
-        @DoNotInline
         static Typeface create(Typeface family, int weight, boolean italic) {
             return Typeface.create(family, weight, italic);
         }

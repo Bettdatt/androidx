@@ -16,12 +16,15 @@
 package androidx.privacysandbox.sdkruntime.client.loader.impl
 
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.os.Build
+import android.os.Bundle
+import android.view.ContextThemeWrapper
+import android.view.Display
 import androidx.annotation.RequiresApi
+import androidx.core.content.res.ResourcesCompat
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -48,12 +51,38 @@ internal class SandboxedSdkContextCompat(
     base: Context,
     private val sdkPackageName: String,
     private val classLoader: ClassLoader?
-) : ContextWrapper(base) {
+) : ContextThemeWrapper(base, ResourcesCompat.ID_NULL) {
 
     @RequiresApi(Build.VERSION_CODES.N)
     override fun createDeviceProtectedStorageContext(): Context {
         return SandboxedSdkContextCompat(
             Api24.createDeviceProtectedStorageContext(baseContext),
+            sdkPackageName,
+            classLoader
+        )
+    }
+
+    override fun createDisplayContext(display: Display): Context {
+        return SandboxedSdkContextCompat(
+            baseContext.createDisplayContext(display),
+            sdkPackageName,
+            classLoader
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    override fun createWindowContext(type: Int, options: Bundle?): Context {
+        return SandboxedSdkContextCompat(
+            Api30.createWindowContext(baseContext, type, options),
+            sdkPackageName,
+            classLoader
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    override fun createWindowContext(display: Display, type: Int, options: Bundle?): Context {
+        return SandboxedSdkContextCompat(
+            Api31.createWindowContext(baseContext, display, type, options),
             sdkPackageName,
             classLoader
         )
@@ -72,16 +101,14 @@ internal class SandboxedSdkContextCompat(
     }
 
     /** Points to <app_data_dir>/code_cache/RuntimeEnabledSdksData/<sdk_package_name> */
-    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun getCodeCacheDir(): File {
-        val sdksCodeCacheRoot = ensureDirExists(Api21.codeCacheDir(baseContext), SDK_ROOT_FOLDER)
+        val sdksCodeCacheRoot = ensureDirExists(baseContext.codeCacheDir, SDK_ROOT_FOLDER)
         return ensureDirExists(sdksCodeCacheRoot, sdkPackageName)
     }
 
     /** Points to <app_data_dir>/no_backup/RuntimeEnabledSdksData/<sdk_package_name> */
-    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
     override fun getNoBackupFilesDir(): File {
-        val sdksNoBackupRoot = ensureDirExists(Api21.noBackupFilesDir(baseContext), SDK_ROOT_FOLDER)
+        val sdksNoBackupRoot = ensureDirExists(baseContext.noBackupFilesDir, SDK_ROOT_FOLDER)
         return ensureDirExists(sdksNoBackupRoot, sdkPackageName)
     }
 
@@ -251,13 +278,6 @@ internal class SandboxedSdkContextCompat(
         return dir
     }
 
-    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
-    private object Api21 {
-        fun codeCacheDir(context: Context): File = context.codeCacheDir
-
-        fun noBackupFilesDir(context: Context): File = context.noBackupFilesDir
-    }
-
     @RequiresApi(Build.VERSION_CODES.N)
     private object Api24 {
         fun createDeviceProtectedStorageContext(context: Context): Context =
@@ -267,6 +287,22 @@ internal class SandboxedSdkContextCompat(
 
         fun deleteSharedPreferences(context: Context, name: String): Boolean =
             context.deleteSharedPreferences(name)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private object Api30 {
+        fun createWindowContext(context: Context, type: Int, options: Bundle?): Context =
+            context.createWindowContext(type, options)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private object Api31 {
+        fun createWindowContext(
+            context: Context,
+            display: Display,
+            type: Int,
+            options: Bundle?
+        ): Context = context.createWindowContext(display, type, options)
     }
 
     private companion object {

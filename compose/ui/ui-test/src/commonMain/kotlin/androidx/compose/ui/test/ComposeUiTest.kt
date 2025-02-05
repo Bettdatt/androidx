@@ -16,10 +16,13 @@
 
 package androidx.compose.ui.test
 
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Density
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.TestDispatcher
 
 /**
  * Sets up the test environment, runs the given [test][block] and then tears down the test
@@ -38,7 +41,9 @@ import kotlin.coroutines.EmptyCoroutineContext
  * Keeping a reference to the [ComposeUiTest] outside of this function is an error.
  *
  * @param effectContext The [CoroutineContext] used to run the composition. The context for
- *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context.
+ *   `LaunchedEffect`s and `rememberCoroutineScope` will be derived from this context. If this
+ *   context contains a [TestDispatcher] or [TestCoroutineScheduler] (in that order), it will be
+ *   used for composition and the [MainTestClock].
  * @param block The test function.
  */
 @ExperimentalTestApi
@@ -167,12 +172,6 @@ expect sealed interface ComposeUiTest : SemanticsNodeInteractionsProvider {
         condition: () -> Boolean
     )
 
-    /** Registers an [IdlingResource] in this test. */
-    fun registerIdlingResource(idlingResource: IdlingResource)
-
-    /** Unregisters an [IdlingResource] from this test. */
-    fun unregisterIdlingResource(idlingResource: IdlingResource)
-
     /**
      * Sets the given [composable] as the content to be tested. This should be called exactly once
      * per test.
@@ -181,6 +180,28 @@ expect sealed interface ComposeUiTest : SemanticsNodeInteractionsProvider {
      *   doesn't have access to a host to set content in.
      */
     fun setContent(composable: @Composable () -> Unit)
+
+    /**
+     * Enables accessibility checks that will be run before every action that is expected to change
+     * the UI.
+     *
+     * Accessibility checks are platform dependent, refer to the documentation of the platform
+     * specific variant of [ComposeUiTest] to see if it is supported and how you can configure it.
+     *
+     * On Android, this requires API 34+ (Android U), and currently does not work on Robolectric.
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_withComposeUiTest_sample
+     * @see disableAccessibilityChecks
+     */
+    @RequiresApi(34) fun enableAccessibilityChecks()
+
+    /**
+     * Disables accessibility checks.
+     *
+     * @sample androidx.compose.ui.test.samples.accessibilityChecks_withComposeUiTest_sample
+     * @see enableAccessibilityChecks
+     */
+    @RequiresApi(34) fun disableAccessibilityChecks()
 }
 
 /**
@@ -201,7 +222,9 @@ fun ComposeUiTest.waitUntilNodeCount(
     timeoutMillis: Long = 1_000L
 ) {
     waitUntil("exactly $count nodes match (${matcher.description})", timeoutMillis) {
-        onAllNodes(matcher).fetchSemanticsNodes().size == count
+        // Never require the existence of compose roots. Either the current UI or the anticipated UI
+        // might not have any compose at all (i.e. View only).
+        onAllNodes(matcher).fetchSemanticsNodes(atLeastOneRootRequired = false).size == count
     }
 }
 

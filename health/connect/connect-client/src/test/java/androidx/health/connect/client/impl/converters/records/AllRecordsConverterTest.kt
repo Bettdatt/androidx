@@ -54,6 +54,7 @@ import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.RespiratoryRateRecord
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SexualActivityRecord
+import androidx.health.connect.client.records.SkinTemperatureRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.SpeedRecord
 import androidx.health.connect.client.records.StepsCadenceRecord
@@ -65,8 +66,10 @@ import androidx.health.connect.client.records.WheelchairPushesRecord
 import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
+import androidx.health.connect.client.records.metadata.Metadata.Companion.RECORDING_METHOD_MANUAL_ENTRY
 import androidx.health.connect.client.units.BloodGlucose
 import androidx.health.connect.client.units.Length
+import androidx.health.connect.client.units.TemperatureDelta
 import androidx.health.connect.client.units.celsius
 import androidx.health.connect.client.units.grams
 import androidx.health.connect.client.units.kilocalories
@@ -98,10 +101,11 @@ private val START_ZONE_OFFSET = ZoneOffset.ofHours(1)
 private val END_ZONE_OFFSET = ZoneOffset.ofHours(2)
 private val TEST_METADATA =
     Metadata(
+        recordingMethod = RECORDING_METHOD_MANUAL_ENTRY,
         id = "uid",
         clientRecordId = "clientId",
         clientRecordVersion = 10,
-        device = Device(manufacturer = "manufacturer"),
+        device = Device(type = Device.Companion.TYPE_PHONE, manufacturer = "manufacturer"),
         lastModifiedTime = END_TIME,
         dataOrigin = DataOrigin(packageName = "appId")
     )
@@ -669,6 +673,7 @@ class AllRecordsConverterTest {
     fun testActivitySessionWithOnlyRequiredData() {
         val data =
             ExerciseSessionRecord(
+                metadata = Metadata(recordingMethod = RECORDING_METHOD_MANUAL_ENTRY),
                 exerciseType = EXERCISE_TYPE_BADMINTON,
                 startTime = START_TIME,
                 startZoneOffset = null,
@@ -798,6 +803,46 @@ class AllRecordsConverterTest {
                 endTime = END_TIME,
                 endZoneOffset = END_ZONE_OFFSET,
                 metadata = TEST_METADATA
+            )
+
+        checkProtoAndRecordTypeNameMatch(data)
+        assertThat(toRecord(data.toProto())).isEqualTo(data)
+    }
+
+    @Test
+    fun testSkinTemperature() {
+        val data =
+            SkinTemperatureRecord(
+                baseline = 34.3.celsius,
+                measurementLocation = SkinTemperatureRecord.MEASUREMENT_LOCATION_WRIST,
+                startTime = START_TIME,
+                startZoneOffset = START_ZONE_OFFSET,
+                endTime = END_TIME,
+                endZoneOffset = END_ZONE_OFFSET,
+                metadata = TEST_METADATA,
+                deltas =
+                    listOf(
+                        SkinTemperatureRecord.Delta(
+                            time = Instant.ofEpochMilli(1234L),
+                            delta = TemperatureDelta.celsius(1.2),
+                        )
+                    )
+            )
+
+        checkProtoAndRecordTypeNameMatch(data)
+        assertThat(toRecord(data.toProto())).isEqualTo(data)
+    }
+
+    @Test
+    fun testSkinTemperatureWithEmptyDeltasList() {
+        val data =
+            SkinTemperatureRecord(
+                startTime = START_TIME,
+                startZoneOffset = START_ZONE_OFFSET,
+                endTime = END_TIME,
+                endZoneOffset = END_ZONE_OFFSET,
+                metadata = TEST_METADATA,
+                deltas = emptyList()
             )
 
         checkProtoAndRecordTypeNameMatch(data)

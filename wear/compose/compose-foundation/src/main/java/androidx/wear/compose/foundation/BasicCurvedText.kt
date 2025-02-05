@@ -16,6 +16,8 @@
 
 package androidx.wear.compose.foundation
 
+import android.graphics.Paint.LINEAR_TEXT_FLAG
+import android.graphics.Paint.SUBPIXEL_TEXT_FLAG
 import android.graphics.Typeface
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -51,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
+import androidx.compose.ui.unit.isUnspecified
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -77,7 +80,7 @@ public fun CurvedScope.basicCurvedText(
     angularDirection: CurvedDirection.Angular? = null,
     overflow: TextOverflow = TextOverflow.Clip,
     style: @Composable () -> CurvedTextStyle = { CurvedTextStyle() }
-) =
+): Unit =
     add(
         CurvedTextChild(
             text,
@@ -108,7 +111,7 @@ public fun CurvedScope.basicCurvedText(
     modifier: CurvedModifier = CurvedModifier,
     angularDirection: CurvedDirection.Angular? = null,
     overflow: TextOverflow = TextOverflow.Clip,
-) = basicCurvedText(text, modifier, angularDirection, overflow) { style }
+): Unit = basicCurvedText(text, modifier, angularDirection, overflow) { style }
 
 internal class CurvedTextChild(
     val text: String,
@@ -143,7 +146,9 @@ internal class CurvedTextChild(
             text,
             clockwise,
             actualStyle.fontSize.toPx(),
-            actualStyle.letterSpacing,
+            if (clockwise || actualStyle.letterSpacingCounterClockwise.isUnspecified)
+                actualStyle.letterSpacing
+            else actualStyle.letterSpacingCounterClockwise,
             density
         )
 
@@ -238,7 +243,11 @@ internal class CurvedTextDelegate {
 
     private var typeFace: State<Typeface?> = mutableStateOf(null)
 
-    private val paint = android.graphics.Paint().apply { isAntiAlias = true }
+    private val paint =
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            flags = flags or (SUBPIXEL_TEXT_FLAG + LINEAR_TEXT_FLAG)
+        }
     private val backgroundPath = android.graphics.Path()
     private val textPath = android.graphics.Path()
 
@@ -274,6 +283,7 @@ internal class CurvedTextDelegate {
                             val emWidth = paint.textSize * paint.textScaleX
                             if (emWidth == 0.0f) 0f else it.value * density / emWidth
                         }
+                        // This includes the TextUnit.Unspecified case
                         else -> 0f
                     }
                 }
@@ -312,8 +322,8 @@ internal class CurvedTextDelegate {
         paint.getTextBounds(text, 0, text.length, rect)
 
         textWidth = rect.width().toFloat()
-        textHeight = -paint.fontMetrics.top + paint.fontMetrics.bottom
-        baseLinePosition = if (clockwise) -paint.fontMetrics.top else paint.fontMetrics.bottom
+        textHeight = -paint.fontMetrics.ascent + paint.fontMetrics.descent
+        baseLinePosition = if (clockwise) -paint.fontMetrics.ascent else paint.fontMetrics.descent
     }
 
     private fun updateTypeFace() {

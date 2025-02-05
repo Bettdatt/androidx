@@ -29,6 +29,7 @@ import androidx.benchmark.macro.CompilationMode.Full
 import androidx.benchmark.macro.CompilationMode.Ignore
 import androidx.benchmark.macro.CompilationMode.None
 import androidx.benchmark.macro.CompilationMode.Partial
+import androidx.benchmark.macro.MacrobenchmarkScope.KillFlushMode
 import androidx.profileinstaller.ProfileInstallReceiver
 import java.lang.StringBuilder
 import org.junit.AssumptionViolatedException
@@ -110,18 +111,7 @@ sealed class CompilationMode {
                             compileResetErrorString(packageName, output, DeviceInfo.isEmulator)
                         }
                     } else if (Shell.isSessionRooted()) {
-                        // cmd package compile --reset returns a "Success" or a "Failure" to stdout.
-                        // Rather than rely on exit codes which are not always correct, we
-                        // specifically look for the work "Success" in stdout to make sure reset
-                        // actually happened.
-                        val output =
-                            Shell.executeScriptCaptureStdout(
-                                "cmd package compile --reset $packageName"
-                            )
-
-                        check(output.trim() == "Success" || output.contains("PERFORMED")) {
-                            compileResetErrorString(packageName, output, DeviceInfo.isEmulator)
-                        }
+                        cmdPackageCompileReset(packageName)
                     } else {
                         // User builds pre-U. Kick off a full uninstall-reinstall
                         Log.d(TAG, "Reinstalling $packageName")
@@ -154,7 +144,7 @@ sealed class CompilationMode {
             } finally {
                 // Cleanup the temporary APK
                 Log.d(TAG, "Deleting $copiedApkPaths")
-                Shell.executeScriptSilent("rm $copiedApkPaths")
+                Shell.rm(copiedApkPaths)
             }
         }
     }
@@ -174,7 +164,7 @@ sealed class CompilationMode {
                 val tempApkPath =
                     "/data/local/tmp/$packageName-$index-${System.currentTimeMillis()}.apk"
                 Log.d(TAG, "Copying APK $apkPath to $tempApkPath")
-                Shell.executeScriptSilent("cp $apkPath $tempApkPath")
+                Shell.cp(from = apkPath, to = tempApkPath)
                 tempApkPath
             }
         return tempApkPaths.joinToString(" ")
@@ -242,16 +232,19 @@ sealed class CompilationMode {
 
     @RequiresApi(24) internal abstract fun shouldReset(): Boolean
 
+    internal open fun requiresClearArtRuntimeImage(): Boolean = false
+
     /**
      * No pre-compilation - a compilation profile reset is performed and the entire app will be
      * allowed to Just-In-Time compile as it runs.
      *
-     * Note that later iterations may perform differently, as app code is jitted.
+     * Note that later iterations may perform differently if the app is not killed each iteration
+     * (such as will `StartupMode.COLD`), as app code is jitted.
      */
-    // Leaving possibility for future configuration (such as interpreted = true)
     @Suppress("CanSealedSubClassBeObject")
     @RequiresApi(24)
     class None : CompilationMode() {
+
         override fun toString(): String = "None"
 
         override fun compileImpl(scope: MacrobenchmarkScope, warmupBlock: () -> Unit) {
@@ -259,6 +252,14 @@ sealed class CompilationMode {
         }
 
         override fun shouldReset(): Boolean = true
+
+        /**
+         * To get worst-case `cmd package compile -f -m verify` performance on API 34+, we must
+         * clear the art runtime *EACH TIME* the app is killed.
+         */
+        override fun requiresClearArtRuntimeImage(): Boolean {
+            return DeviceInfo.supportsRuntimeImages
+        }
     }
 
     /**
@@ -340,7 +341,8 @@ sealed class CompilationMode {
                 if (installErrorString == null) {
                     // baseline profile install success, kill process before compiling
                     Log.d(TAG, "Killing process $packageName")
-                    scope.killProcess()
+                    // We don't really need to flush ART profiles here, but its safer to do it.
+                    scope.killProcessAndFlushArtProfiles()
                     cmdPackageCompile(packageName, "speed-profile")
                 } else {
                     if (baselineProfileMode == BaselineProfileMode.Require) {
@@ -351,13 +353,19 @@ sealed class CompilationMode {
                 }
             }
             if (warmupIterations > 0) {
-                scope.flushArtProfiles = true
-                try {
-                    repeat(this.warmupIterations) { warmupBlock() }
+                scope.withKillFlushMode(
+                    current = KillFlushMode.None,
+                    override = KillFlushMode.FlushArtProfiles
+                ) {
+                    check(!scope.hasFlushedArtProfiles)
+                    repeat(warmupIterations) { warmupBlock() }
                     scope.killProcessAndFlushArtProfiles()
+                    check(scope.hasFlushedArtProfiles) {
+                        "Process $packageName never flushed profiles in any process - check that" +
+                            " you launched the process, and that you only killed it with" +
+                            " scope.killProcess, which will save profiles."
+                    }
                     cmdPackageCompile(packageName, "speed-profile")
-                } finally {
-                    scope.flushArtProfiles = false
                 }
             }
         }
@@ -366,7 +374,7 @@ sealed class CompilationMode {
     }
 
     /**
-     * Full ahead-of-time compilation.
+     * Full ahead-of-time compilation of all method (but not classes) in the target application.
      *
      * Equates to `cmd package compile -f -m speed <package>` on API 24+.
      *
@@ -442,6 +450,20 @@ sealed class CompilationMode {
                 )
             check(stdout.trim() == "Success" || stdout.contains("PERFORMED")) {
                 "Failed to compile (out=$stdout)"
+            }
+        }
+
+        @RequiresApi(24)
+        internal fun cmdPackageCompileReset(packageName: String) {
+            // cmd package compile --reset returns a "Success" or a "Failure" to stdout.
+            // Rather than rely on exit codes which are not always correct, we
+            // specifically look for the work "Success" in stdout to make sure reset
+            // actually happened.
+            val output =
+                Shell.executeScriptCaptureStdout("cmd package compile --reset $packageName")
+
+            check(output.trim() == "Success" || output.contains("PERFORMED")) {
+                compileResetErrorString(packageName, output, DeviceInfo.isEmulator)
             }
         }
 

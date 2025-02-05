@@ -33,16 +33,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.absoluteOffset
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,11 +49,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -67,6 +73,7 @@ import kotlinx.coroutines.launch
 
 /** Short animation in milliseconds. */
 internal const val SHORT_ANIMATION = 50
+
 /** Flash animation length in milliseconds. */
 internal const val FLASH_ANIMATION = 100
 
@@ -79,31 +86,110 @@ internal const val QUICK_ANIMATION = 250
 /** Standard easing for Swipe To Reveal. */
 internal val STANDARD_IN_OUT = CubicBezierEasing(0.20f, 0.0f, 0.0f, 1.00f)
 
-/** Different values which the swipeable modifier can be configured to. */
-@ExperimentalWearFoundationApi
+/**
+ * Different values that determine the state of the [SwipeToReveal] composable, reflected in
+ * [RevealState.currentValue]. [RevealValue.Covered] is considered the default state where none of
+ * the actions are revealed yet.
+ *
+ * [SwipeToReveal] direction is not localised, with the default being [SwipeDirection.RightToLeft],
+ * and [RevealValue.RightRevealing] and [RevealValue.RightRevealed] correspond to the actions
+ * getting revealed from the right side of the screen. In case swipe direction is set to
+ * [SwipeDirection.Both], actions can also get revealed from the left side of the screen, and in
+ * that case [RevealValue.LeftRevealing] and [RevealValue.LeftRevealed] are used.
+ *
+ * @see [SwipeDirection]
+ */
 @JvmInline
-public value class RevealValue private constructor(val value: Int) {
-    companion object {
+public value class RevealValue private constructor(public val value: Int) {
+    public companion object {
+        /**
+         * The value which represents the state in which the whole revealable content is fully
+         * revealed, and they are displayed on the left side of the screen. This also represents the
+         * state in which one of the actions has been triggered/performed.
+         *
+         * This is only used when the swipe direction is set to [SwipeDirection.Both], and the user
+         * swipes from the left side of the screen.
+         */
+        public val LeftRevealed: RevealValue = RevealValue(-2)
+
+        /**
+         * The value which represents the state in which all the actions are revealed and the top
+         * content is not being swiped. In this state, none of the actions have been triggered or
+         * performed yet, and they are displayed on the left side of the screen.
+         *
+         * This is only used when the swipe direction is set to [SwipeDirection.Both], and the user
+         * swipes from the left side of the screen.
+         */
+        public val LeftRevealing: RevealValue = RevealValue(-1)
+
         /**
          * The default first value which generally represents the state where the revealable actions
          * have not been revealed yet. In this state, none of the actions have been triggered or
          * performed yet.
          */
-        val Covered = RevealValue(0)
+        public val Covered: RevealValue = RevealValue(0)
 
         /**
          * The value which represents the state in which all the actions are revealed and the top
          * content is not being swiped. In this state, none of the actions have been triggered or
          * performed yet.
+         *
+         * @deprecated Use [RightRevealing] instead.
          */
-        val Revealing = RevealValue(1)
+        @Deprecated("Use RightRevealing instead.", ReplaceWith("RightRevealing"))
+        public val Revealing: RevealValue = RevealValue(1)
 
         /**
          * The value which represents the state in which the whole revealable content is fully
          * revealed. This also represents the state in which one of the actions has been
          * triggered/performed.
+         *
+         * @deprecated Use [RightRevealed] instead.
          */
-        val Revealed = RevealValue(2)
+        @Deprecated("Use RightRevealed instead.", ReplaceWith("RightRevealed"))
+        public val Revealed: RevealValue = RevealValue(2)
+
+        /**
+         * The value which represents the state in which all the actions are revealed and the top
+         * content is not being swiped. In this state, none of the actions have been triggered or
+         * performed yet, and they are displayed on the right side of the screen.
+         */
+        public val RightRevealing: RevealValue = RevealValue(1)
+
+        /**
+         * The value which represents the state in which the whole revealable content is fully
+         * revealed, and the actions are revealed on the right side of the screen. This also
+         * represents the state in which one of the actions has been triggered/performed.
+         */
+        public val RightRevealed: RevealValue = RevealValue(2)
+    }
+}
+
+/**
+ * Different values [SwipeToReveal] composable can reveal the actions from.
+ *
+ * [SwipeDirection] is not localised, with the default being [SwipeDirection.RightToLeft] to prevent
+ * conflict with the system-wide swipe to dismiss gesture in an activity, so it's strongly advised
+ * to respect the default value to avoid conflicting gestures.
+ */
+@JvmInline
+public value class SwipeDirection private constructor(public val value: Int) {
+    public companion object {
+        /**
+         * The default value which allows the user to swipe right to left to reveal or execute the
+         * actions. It's strongly advised to respect the default behavior to avoid conflict with the
+         * swipe-to-dismiss gesture.
+         */
+        public val RightToLeft: SwipeDirection = SwipeDirection(0)
+
+        /**
+         * The value which allows the user to swipe in either direction to reveal or execute the
+         * actions. This should not be used if the component is used in an activity as the gesture
+         * might conflict with the swipe-to-dismiss gesture and could be confusing for the users.
+         * This is only supported for rare cases where the current screen does not support swipe to
+         * dismiss.
+         */
+        public val Both: SwipeDirection = SwipeDirection(1)
     }
 }
 
@@ -112,30 +198,29 @@ public value class RevealValue private constructor(val value: Int) {
  * not set by themselves and need to be set appropriately with [RevealState.snapTo] and
  * [RevealState.animateTo].
  */
-@ExperimentalWearFoundationApi
 @JvmInline
-public value class RevealActionType private constructor(val value: Int) {
-    companion object {
+public value class RevealActionType private constructor(public val value: Int) {
+    public companion object {
         /**
          * Represents the primary action composable of [SwipeToReveal]. This corresponds to the
          * mandatory `primaryAction` parameter of [SwipeToReveal].
          */
-        val PrimaryAction = RevealActionType(0)
+        public val PrimaryAction: RevealActionType = RevealActionType(0)
 
         /**
          * Represents the secondary action composable of [SwipeToReveal]. This corresponds to the
          * optional `secondaryAction` composable of [SwipeToReveal].
          */
-        val SecondaryAction = RevealActionType(1)
+        public val SecondaryAction: RevealActionType = RevealActionType(1)
 
         /**
          * Represents the undo action composable of [SwipeToReveal]. This corresponds to the
          * `undoAction` composable of [SwipeToReveal] which is shown once an action is performed.
          */
-        val UndoAction = RevealActionType(2)
+        public val UndoAction: RevealActionType = RevealActionType(2)
 
         /** Default value when none of the above are applicable. */
-        val None = RevealActionType(-1)
+        public val None: RevealActionType = RevealActionType(-1)
     }
 }
 
@@ -145,29 +230,43 @@ public value class RevealActionType private constructor(val value: Int) {
  * width of the top content starting from right and ending on left.
  *
  * @param coveredAnchor Anchor for the [RevealValue.Covered] value
- * @param revealingAnchor Anchor for the [RevealValue.Revealing] value
- * @param revealedAnchor Anchor for the [RevealValue.Revealed] value
+ * @param revealingAnchor Anchor for the [RevealValue.LeftRevealing] or [RevealValue.RightRevealing]
+ *   value
+ * @param revealedAnchor Anchor for the [RevealValue.LeftRevealed] or [RevealValue.RightRevealed]
+ *   value
+ * @param swipeDirection The direction in which the content can be swiped. It's strongly advised to
+ *   keep the default [SwipeDirection.RightToLeft] in order to preserve compatibility with the
+ *   system wide swipe to dismiss gesture.
  */
-@ExperimentalWearFoundationApi
 public fun createAnchors(
     coveredAnchor: Float = 0f,
     revealingAnchor: Float = SwipeToRevealDefaults.revealingRatio,
-    revealedAnchor: Float = 1f
+    revealedAnchor: Float = 1f,
+    swipeDirection: SwipeDirection = SwipeDirection.RightToLeft
 ): Map<RevealValue, Float> {
+    if (swipeDirection == SwipeDirection.Both) {
+        return mapOf(
+            RevealValue.LeftRevealed to -revealedAnchor,
+            RevealValue.LeftRevealing to -revealingAnchor,
+            RevealValue.Covered to coveredAnchor,
+            RevealValue.RightRevealing to revealingAnchor,
+            RevealValue.RightRevealed to revealedAnchor
+        )
+    }
     return mapOf(
         RevealValue.Covered to coveredAnchor,
-        RevealValue.Revealing to revealingAnchor,
-        RevealValue.Revealed to revealedAnchor
+        RevealValue.RightRevealing to revealingAnchor,
+        RevealValue.RightRevealed to revealedAnchor
     )
 }
 
 /**
- * A class to keep track of the state of the composable. It can be used to customise the behaviour
+ * A class to keep track of the state of the composable. It can be used to customise the behavior
  * and state of the composable.
  *
  * @constructor Create a [RevealState].
  */
-@ExperimentalWearFoundationApi
+@OptIn(ExperimentalWearFoundationApi::class)
 public class RevealState
 internal constructor(
     initialValue: RevealValue,
@@ -176,7 +275,7 @@ internal constructor(
     positionalThreshold: Density.(totalDistance: Float) -> Float,
     internal val anchors: Map<RevealValue, Float>,
     internal val coroutineScope: CoroutineScope,
-    internal val nestedScrollDispatcher: NestedScrollDispatcher
+    internal val nestedScrollDispatcher: NestedScrollDispatcher,
 ) {
     /** [SwipeableV2State] internal instance for the state. */
     internal val swipeableState =
@@ -187,10 +286,10 @@ internal constructor(
                 confirmValueChangeAndReset(confirmValueChange, revealValue)
             },
             positionalThreshold = positionalThreshold,
-            nestedScrollDispatcher = nestedScrollDispatcher
+            nestedScrollDispatcher = nestedScrollDispatcher,
         )
 
-    public var lastActionType by mutableStateOf(RevealActionType.None)
+    public var lastActionType: RevealActionType by mutableStateOf(RevealActionType.None)
 
     /**
      * The current [RevealValue] based on the status of the component.
@@ -260,9 +359,12 @@ internal constructor(
         if (targetValue != RevealValue.Covered) {
             resetLastState(this)
         }
-        swipeableState.animateTo(targetValue)
-        if (targetValue == RevealValue.Covered) {
-            lastActionType = RevealActionType.None
+        try {
+            swipeableState.animateTo(targetValue)
+        } finally {
+            if (targetValue == RevealValue.Covered) {
+                lastActionType = RevealActionType.None
+            }
         }
     }
 
@@ -288,12 +390,12 @@ internal constructor(
 
     /**
      * Resets last state if a different SwipeToReveal is being moved to new anchor and the last
-     * state is in [RevealValue.Revealing] mode which represents no action has been performed yet.
-     * In [RevealValue.Revealed], the action has been performed and it will not be reset.
+     * state is in [RevealValue.RightRevealing] mode which represents no action has been performed
+     * yet. In [RevealValue.RightRevealed], the action has been performed and it will not be reset.
      */
     private suspend fun resetLastState(currentState: RevealState) {
         val oldState = SingleSwipeCoordinator.lastUpdatedState.getAndSet(currentState)
-        if (currentState != oldState && oldState?.currentValue == RevealValue.Revealing) {
+        if (currentState != oldState && oldState?.currentValue == RevealValue.RightRevealing) {
             oldState.animateTo(RevealValue.Covered)
         }
     }
@@ -318,7 +420,6 @@ internal constructor(
  * @param anchors A map of [RevealValue] to the fraction where the content can be revealed to reach
  *   that value. Each anchor should be between [0..1] which will be adjusted based on total width.
  */
-@ExperimentalWearFoundationApi
 @Composable
 public fun rememberRevealState(
     initialValue: RevealValue = RevealValue.Covered,
@@ -338,7 +439,7 @@ public fun rememberRevealState(
             positionalThreshold = positionalThreshold,
             anchors = anchors,
             coroutineScope = coroutineScope,
-            nestedScrollDispatcher = nestedScrollDispatcher
+            nestedScrollDispatcher = nestedScrollDispatcher,
         )
     }
 }
@@ -353,7 +454,7 @@ public fun rememberRevealState(
  * triggered.
  *
  * An optional undo action can also be added. This undo action will be visible to users once the
- * [RevealValue] becomes [RevealValue.Revealed].
+ * [RevealValue] becomes [RevealValue.RightRevealed].
  *
  * It is strongly recommended to have icons represent the actions and maybe a text and icon for the
  * undo action.
@@ -379,10 +480,10 @@ public fun rememberRevealState(
  * @param secondaryAction An optional action that can be added to the component. We strongly
  *   recommend triggering the action when it is clicked.
  * @param undoAction The optional undo action that will be applied to the component once the the
- *   [RevealState.currentValue] becomes [RevealValue.Revealed].
+ *   [RevealState.currentValue] becomes [RevealValue.RightRevealed].
  * @param content The content that will be initially displayed over the other actions provided.
  */
-@ExperimentalWearFoundationApi
+@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 public fun SwipeToReveal(
     primaryAction: @Composable RevealScope.() -> Unit,
@@ -396,181 +497,252 @@ public fun SwipeToReveal(
     val revealScope = remember(state) { RevealScopeImpl(state) }
     // A no-op NestedScrollConnection which does not consume scroll/fling events
     val noOpNestedScrollConnection = remember { object : NestedScrollConnection {} }
-    Box(
-        modifier =
-            modifier
-                .swipeableV2(
-                    state = state.swipeableState,
-                    orientation = Orientation.Horizontal,
-                    enabled = state.currentValue != RevealValue.Revealed,
-                )
-                .swipeAnchors(
-                    state = state.swipeableState,
-                    possibleValues = state.swipeAnchors.keys
-                ) { value, layoutSize ->
-                    val swipeableWidth = layoutSize.width.toFloat()
-                    // Update the total width which will be used to calculate the anchors
-                    revealScope.width.floatValue = swipeableWidth
-                    // Multiply the anchor with -1f to get the actual swipeable anchor
-                    -state.swipeAnchors[value]!! * swipeableWidth
-                }
-                // NestedScrollDispatcher sends the scroll/fling events from the node to its parent
-                // and onwards including the modifier chain. Apply it in the end to let nested
-                // scroll
-                // connection applied before this modifier consume the scroll/fling events.
-                .nestedScroll(noOpNestedScrollConnection, state.nestedScrollDispatcher)
+
+    var globalPosition by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+    CustomTouchSlopProvider(
+        newTouchSlop = LocalViewConfiguration.current.touchSlop * CustomTouchSlopMultiplier
     ) {
-        val swipeCompleted = state.currentValue == RevealValue.Revealed
-        val lastActionIsSecondary = state.lastActionType == RevealActionType.SecondaryAction
-        val isWithinRevealOffset by remember {
-            derivedStateOf { abs(state.offset) <= revealScope.revealOffset }
-        }
+        Box(
+            modifier =
+                modifier
+                    .onGloballyPositioned { layoutCoordinates ->
+                        globalPosition = layoutCoordinates
+                    }
+                    .swipeableV2(
+                        state = state.swipeableState,
+                        orientation = Orientation.Horizontal,
+                        enabled =
+                            state.currentValue != RevealValue.LeftRevealed &&
+                                state.currentValue != RevealValue.RightRevealed,
+                    )
+                    .swipeAnchors(
+                        state = state.swipeableState,
+                        possibleValues = state.swipeAnchors.keys
+                    ) { value, layoutSize ->
+                        val swipeableWidth = layoutSize.width.toFloat()
+                        // Update the total width which will be used to calculate the anchors
+                        revealScope.width.floatValue = swipeableWidth
+                        // Multiply the anchor with -1f to get the actual swipeable anchor
+                        -state.swipeAnchors[value]!! * swipeableWidth
+                    }
+                    // NestedScrollDispatcher sends the scroll/fling events from the node to its
+                    // parent
+                    // and onwards including the modifier chain. Apply it in the end to let nested
+                    // scroll
+                    // connection applied before this modifier consume the scroll/fling events.
+                    .nestedScroll(noOpNestedScrollConnection, state.nestedScrollDispatcher)
+        ) {
+            val swipeCompleted =
+                state.currentValue == RevealValue.RightRevealed ||
+                    state.currentValue == RevealValue.LeftRevealed
+            val lastActionIsSecondary = state.lastActionType == RevealActionType.SecondaryAction
+            val isWithinRevealOffset by remember {
+                derivedStateOf { abs(state.offset) <= revealScope.revealOffset }
+            }
+            val canSwipeRight =
+                (state.swipeAnchors.minOfOrNull { (_, offset) -> offset } ?: 0f) < 0f
 
-        // Determines whether the secondary action will be visible based on the current
-        // reveal offset
-        val showSecondaryAction = isWithinRevealOffset || lastActionIsSecondary
+            // Determines whether the secondary action will be visible based on the current
+            // reveal offset
+            val showSecondaryAction = isWithinRevealOffset || lastActionIsSecondary
 
-        // Determines whether both primary and secondary action should be hidden, usually the case
-        // when secondary action is clicked
-        val hideActions = !isWithinRevealOffset && lastActionIsSecondary
+            // Determines whether both primary and secondary action should be hidden, usually the
+            // case
+            // when secondary action is clicked
+            val hideActions = !isWithinRevealOffset && lastActionIsSecondary
 
-        val shouldDrawActions by remember { derivedStateOf { abs(state.offset) > 0 } }
+            val swipingRight by remember { derivedStateOf { state.offset > 0 } }
 
-        // Draw the buttons only when offset is greater than zero.
-        if (shouldDrawActions) {
-            Box(
-                modifier = Modifier.matchParentSize(),
-                contentAlignment = AbsoluteAlignment.CenterRight
-            ) {
-                AnimatedContent(
-                    targetState = swipeCompleted && undoAction != null,
-                    transitionSpec = {
-                        if (targetState) { // Fade in the Undo composable and fade out actions
-                            fadeInUndo()
-                        } else { // Fade in the actions and fade out the undo composable
-                            fadeOutUndo()
-                        }
-                    },
-                    label = "AnimatedContentS2R"
-                ) { displayUndo ->
-                    if (displayUndo && undoAction != null) {
-                        val undoActionAlpha =
-                            animateFloatAsState(
-                                targetValue = if (swipeCompleted) 1f else 0f,
-                                animationSpec =
-                                    tween(
-                                        durationMillis = RAPID_ANIMATION,
-                                        delayMillis = FLASH_ANIMATION,
-                                        easing = STANDARD_IN_OUT,
-                                    ),
-                                label = "UndoActionAlpha"
-                            )
-                        Row(
-                            modifier =
-                                Modifier.graphicsLayer { alpha = undoActionAlpha.value }
-                                    .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            ActionSlot(revealScope, content = undoAction)
-                        }
-                    } else {
-                        // Animate weight for secondary action slot.
-                        val secondaryActionWeight =
-                            animateFloatAsState(
-                                targetValue = if (showSecondaryAction) 1f else 0f,
-                                animationSpec = tween(durationMillis = QUICK_ANIMATION),
-                                label = "SecondaryActionAnimationSpec"
-                            )
-                        val secondaryActionAlpha =
-                            animateFloatAsState(
-                                targetValue = if (!showSecondaryAction || hideActions) 0f else 1f,
-                                animationSpec =
-                                    tween(durationMillis = QUICK_ANIMATION, easing = LinearEasing),
-                                label = "SecondaryActionAlpha"
-                            )
-                        val primaryActionAlpha =
-                            animateFloatAsState(
-                                targetValue = if (hideActions) 0f else 1f,
-                                animationSpec = tween(durationMillis = 100, easing = LinearEasing),
-                                label = "PrimaryActionAlpha"
-                            )
-                        val revealedContentAlpha =
-                            animateFloatAsState(
-                                targetValue = if (swipeCompleted) 0f else 1f,
-                                animationSpec =
-                                    tween(durationMillis = FLASH_ANIMATION, easing = LinearEasing),
-                                label = "RevealedContentAlpha"
-                            )
-                        Row(
-                            modifier =
-                                Modifier.graphicsLayer { alpha = revealedContentAlpha.value }
-                                    .layout { measurable, constraints ->
-                                        val placeable =
-                                            measurable.measure(
-                                                constraints.copy(
-                                                    maxWidth =
-                                                        if (hideActions) {
-                                                                revealScope.revealOffset
-                                                            } else {
-                                                                abs(state.offset)
-                                                            }
-                                                            .roundToInt()
-                                                )
-                                            )
-                                        layout(placeable.width, placeable.height) {
-                                            placeable.placeRelative(0, 0)
-                                        }
-                                    },
-                            horizontalArrangement = Arrangement.Absolute.Right
-                        ) {
-                            // weight cannot be 0 so remove the composable when weight becomes 0
-                            if (secondaryAction != null && secondaryActionWeight.value > 0) {
-                                Spacer(Modifier.size(SwipeToRevealDefaults.padding))
-                                ActionSlot(
-                                    revealScope,
-                                    weight = secondaryActionWeight.value,
-                                    opacity = secondaryActionAlpha,
-                                    content = secondaryAction,
-                                )
+            // Don't draw actions on the left side if the user cannot swipe right, and they are
+            // currently swiping right
+            val shouldDrawActions by remember {
+                derivedStateOf { abs(state.offset) > 0 && (canSwipeRight || !swipingRight) }
+            }
+
+            // Draw the buttons only when offset is greater than zero.
+            if (shouldDrawActions) {
+                Box(
+                    modifier = Modifier.matchParentSize(),
+                    contentAlignment =
+                        if (swipingRight) AbsoluteAlignment.CenterLeft
+                        else AbsoluteAlignment.CenterRight
+                ) {
+                    AnimatedContent(
+                        targetState = swipeCompleted && undoAction != null,
+                        transitionSpec = {
+                            if (targetState) { // Fade in the Undo composable and fade out actions
+                                fadeInUndo()
+                            } else { // Fade in the actions and fade out the undo composable
+                                fadeOutUndo()
                             }
-                            Spacer(Modifier.size(SwipeToRevealDefaults.padding))
-                            ActionSlot(
-                                revealScope,
-                                content = primaryAction,
-                                opacity = primaryActionAlpha
-                            )
+                        },
+                        label = "AnimatedContentS2R"
+                    ) { displayUndo ->
+                        if (displayUndo && undoAction != null) {
+                            val undoActionAlpha =
+                                animateFloatAsState(
+                                    targetValue = if (swipeCompleted) 1f else 0f,
+                                    animationSpec =
+                                        tween(
+                                            durationMillis = RAPID_ANIMATION,
+                                            delayMillis = FLASH_ANIMATION,
+                                            easing = STANDARD_IN_OUT,
+                                        ),
+                                    label = "UndoActionAlpha"
+                                )
+                            Row(
+                                modifier =
+                                    Modifier.graphicsLayer { alpha = undoActionAlpha.value }
+                                        .fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                ActionSlot(revealScope, content = undoAction)
+                            }
+                        } else {
+                            // Animate weight for secondary action slot.
+                            val secondaryActionWeight =
+                                animateFloatAsState(
+                                    targetValue = if (showSecondaryAction) 1f else 0f,
+                                    animationSpec = tween(durationMillis = QUICK_ANIMATION),
+                                    label = "SecondaryActionAnimationSpec"
+                                )
+                            val secondaryActionAlpha =
+                                animateFloatAsState(
+                                    targetValue =
+                                        if (!showSecondaryAction || hideActions) 0f else 1f,
+                                    animationSpec =
+                                        tween(
+                                            durationMillis = QUICK_ANIMATION,
+                                            easing = LinearEasing
+                                        ),
+                                    label = "SecondaryActionAlpha"
+                                )
+                            val primaryActionAlpha =
+                                animateFloatAsState(
+                                    targetValue = if (hideActions) 0f else 1f,
+                                    animationSpec =
+                                        tween(durationMillis = 100, easing = LinearEasing),
+                                    label = "PrimaryActionAlpha"
+                                )
+                            val revealedContentAlpha =
+                                animateFloatAsState(
+                                    targetValue = if (swipeCompleted) 0f else 1f,
+                                    animationSpec =
+                                        tween(
+                                            durationMillis = FLASH_ANIMATION,
+                                            easing = LinearEasing
+                                        ),
+                                    label = "RevealedContentAlpha"
+                                )
+                            var revealedContentHeight by remember { mutableIntStateOf(0) }
+                            Row(
+                                modifier =
+                                    Modifier.graphicsLayer { alpha = revealedContentAlpha.value }
+                                        .onSizeChanged { revealedContentHeight = it.height }
+                                        .layout { measurable, constraints ->
+                                            val placeable =
+                                                measurable.measure(
+                                                    constraints.copy(
+                                                        maxWidth =
+                                                            if (hideActions) {
+                                                                    revealScope.revealOffset
+                                                                } else {
+                                                                    abs(state.offset)
+                                                                }
+                                                                .roundToInt()
+                                                    )
+                                                )
+                                            layout(placeable.width, placeable.height) {
+                                                placeable.placeRelative(
+                                                    0,
+                                                    calculateVerticalOffsetBasedOnScreenPosition(
+                                                        revealedContentHeight,
+                                                        globalPosition
+                                                    )
+                                                )
+                                            }
+                                        },
+                                horizontalArrangement = Arrangement.Absolute.Right
+                            ) {
+                                if (!swipingRight) {
+                                    // weight cannot be 0 so remove the composable when weight
+                                    // becomes 0
+                                    if (
+                                        secondaryAction != null && secondaryActionWeight.value > 0
+                                    ) {
+                                        Spacer(Modifier.size(SwipeToRevealDefaults.padding))
+                                        ActionSlot(
+                                            revealScope,
+                                            weight = secondaryActionWeight.value,
+                                            opacity = secondaryActionAlpha,
+                                            content = secondaryAction,
+                                        )
+                                    }
+                                    Spacer(Modifier.size(SwipeToRevealDefaults.padding))
+                                    ActionSlot(
+                                        revealScope,
+                                        content = primaryAction,
+                                        opacity = primaryActionAlpha
+                                    )
+                                } else {
+                                    ActionSlot(
+                                        revealScope,
+                                        content = primaryAction,
+                                        opacity = primaryActionAlpha
+                                    )
+                                    Spacer(Modifier.size(SwipeToRevealDefaults.padding))
+                                    // weight cannot be 0 so remove the composable when weight
+                                    // becomes 0
+                                    if (
+                                        secondaryAction != null && secondaryActionWeight.value > 0
+                                    ) {
+                                        ActionSlot(
+                                            revealScope,
+                                            weight = secondaryActionWeight.value,
+                                            opacity = secondaryActionAlpha,
+                                            content = secondaryAction,
+                                        )
+                                        Spacer(Modifier.size(SwipeToRevealDefaults.padding))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
-        Row(
-            modifier =
-                Modifier.absoluteOffset {
-                    IntOffset(x = state.requireOffset().roundToInt().coerceAtMost(0), y = 0)
-                }
-        ) {
-            content()
-        }
-        LaunchedEffect(state.currentValue) {
-            if (
-                state.currentValue == RevealValue.Revealed &&
-                    state.lastActionType == RevealActionType.None
+            Row(
+                modifier =
+                    Modifier.absoluteOffset {
+                        val xOffset = state.requireOffset().roundToInt()
+                        IntOffset(
+                            x = if (canSwipeRight) xOffset else xOffset.coerceAtMost(0),
+                            y = 0
+                        )
+                    }
             ) {
-                onFullSwipe()
+                content()
+            }
+            LaunchedEffect(state.currentValue) {
+                if (
+                    (state.currentValue == RevealValue.LeftRevealed ||
+                        state.currentValue == RevealValue.RightRevealed) &&
+                        state.lastActionType == RevealActionType.None
+                ) {
+                    onFullSwipe()
+                }
             }
         }
     }
 }
 
-@ExperimentalWearFoundationApi
 public interface RevealScope {
 
     /**
      * The offset, in pixels, where the revealed actions are fully visible but the existing content
      * would be left in place if the reveal action was stopped. This offset is used to create the
-     * anchor for [RevealValue.Revealing]. If there is no such anchor defined for
-     * [RevealValue.Revealing], it returns 0.0f.
+     * anchor for [RevealValue.RightRevealing]. If there is no such anchor defined for
+     * [RevealValue.RightRevealing], it returns 0.0f.
      */
     /* @FloatRange(from = 0.0) */
     public val revealOffset: Float
@@ -582,7 +754,6 @@ public interface RevealScope {
     public val lastActionType: RevealActionType
 }
 
-@OptIn(ExperimentalWearFoundationApi::class)
 private class RevealScopeImpl
 constructor(
     val revealState: RevealState,
@@ -595,7 +766,7 @@ constructor(
     val width = mutableFloatStateOf(0.0f)
 
     override val revealOffset: Float
-        get() = width.floatValue * (revealState.swipeAnchors[RevealValue.Revealing] ?: 0.0f)
+        get() = width.floatValue * (revealState.swipeAnchors[RevealValue.RightRevealing] ?: 0.0f)
 
     override val lastActionType: RevealActionType
         get() = revealState.lastActionType
@@ -611,8 +782,8 @@ internal object SwipeToRevealDefaults {
     internal val padding = 2.dp
 
     /**
-     * Default ratio of the content displayed when in [RevealValue.Revealing] state, i.e. all the
-     * actions are revealed and the top content is not being swiped. For example, a value of 0.7
+     * Default ratio of the content displayed when in [RevealValue.RightRevealing] state, i.e. all
+     * the actions are revealed and the top content is not being swiped. For example, a value of 0.7
      * means that 70% of the width is used to place the actions.
      */
     internal const val revealingRatio = 0.7f
@@ -621,14 +792,13 @@ internal object SwipeToRevealDefaults {
      * Default position threshold that needs to be swiped in order to transition to the next state.
      * Used in conjunction with [revealingRatio]; for example, a threshold of 0.5 with a revealing
      * ratio of 0.7 means that the user needs to swipe at least 35% (0.5 * 0.7) of the component
-     * width to go from [RevealValue.Covered] to [RevealValue.Revealing] and at least 85% (0.7 +
-     * 0.5 * (1 - 0.7)) of the component width to go from [RevealValue.Revealing] to
-     * [RevealValue.Revealed].
+     * width to go from [RevealValue.Covered] to [RevealValue.RightRevealing] and at least 85%
+     * (0.7 + 0.5 * (1 - 0.7)) of the component width to go from [RevealValue.RightRevealing] to
+     * [RevealValue.RightRevealed].
      */
     internal val positionalThreshold = fractionalPositionalThreshold(0.5f)
 }
 
-@OptIn(ExperimentalWearFoundationApi::class)
 @Composable
 private fun RowScope.ActionSlot(
     revealScope: RevealScope,
@@ -638,7 +808,7 @@ private fun RowScope.ActionSlot(
     content: @Composable RevealScope.() -> Unit
 ) {
     Box(
-        modifier = modifier.fillMaxHeight().weight(weight).graphicsLayer { alpha = opacity.value },
+        modifier = modifier.weight(weight).graphicsLayer { alpha = opacity.value },
         contentAlignment = Alignment.Center
     ) {
         with(revealScope) { content() }
@@ -681,3 +851,30 @@ private fun fadeOutUndo(): ContentTransform =
         initialContentExit =
             fadeOut(animationSpec = tween(durationMillis = SHORT_ANIMATION, easing = LinearEasing))
     )
+
+private fun calculateVerticalOffsetBasedOnScreenPosition(
+    childHeight: Int,
+    globalPosition: LayoutCoordinates?
+): Int {
+    if (globalPosition == null || !globalPosition.positionOnScreen().isSpecified) {
+        return 0
+    }
+    val positionOnScreen = globalPosition.positionOnScreen()
+    val boundsInWindow = globalPosition.boundsInWindow()
+    val parentTop = positionOnScreen.y.toInt()
+    val parentHeight = globalPosition.size.height
+    val parentBottom = parentTop + parentHeight
+    if (parentTop >= boundsInWindow.top && parentBottom <= boundsInWindow.bottom) {
+        // Don't offset if the item is fully on screen
+        return 0
+    }
+
+    // Avoid going outside parent bounds
+    val minCenter = parentTop + childHeight / 2
+    val maxCenter = parentTop + parentHeight - childHeight / 2
+    val desiredCenter = boundsInWindow.center.y.toInt().coerceIn(minCenter, maxCenter)
+    val actualCenter = parentTop + parentHeight / 2
+    return desiredCenter - actualCenter
+}
+
+internal const val CustomTouchSlopMultiplier = 1.20f

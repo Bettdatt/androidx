@@ -17,6 +17,7 @@
 package androidx.compose.foundation.text.modifiers
 
 import androidx.compose.foundation.text.DefaultMinLines
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.text.ceilToIntPx
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.MultiParagraph
@@ -32,7 +33,10 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.constrain
+import androidx.compose.ui.unit.isUnspecified
+import androidx.compose.ui.unit.sp
 import kotlin.math.min
 
 /**
@@ -45,6 +49,7 @@ import kotlin.math.min
  */
 internal class MultiParagraphLayoutCache(
     private var text: AnnotatedString,
+    /** The style used for layout. Ensure to call [markStyleAffectedDirty] when mutating. */
     private var style: TextStyle,
     private var fontFamilyResolver: FontFamily.Resolver,
     private var overflow: TextOverflow = TextOverflow.Clip,
@@ -52,6 +57,7 @@ internal class MultiParagraphLayoutCache(
     private var maxLines: Int = Int.MAX_VALUE,
     private var minLines: Int = DefaultMinLines,
     private var placeholders: List<AnnotatedString.Range<Placeholder>>? = null,
+    private var autoSize: TextAutoSize? = null
 ) {
     /** Convert min max lines into actual constraints */
     private var mMinLinesConstrainer: MinLinesConstrainer? = null
@@ -97,6 +103,17 @@ internal class MultiParagraphLayoutCache(
     /** Output height for last call to [intrinsicHeight] at [cachedIntrinsicHeightInputWidth] */
     private var cachedIntrinsicHeight: Int = -1
 
+    /** Backing property for [fontSizeSearchScope] */
+    private var _textAutoSizeLayoutScope: TextAutoSizeLayoutScopeImpl? = null
+
+    /** Used to get the font size if AutoSize is enabled and perform layout with many font sizes */
+    private val fontSizeSearchScope: TextAutoSizeLayoutScopeImpl
+        get() {
+            if (_textAutoSizeLayoutScope == null)
+                _textAutoSizeLayoutScope = TextAutoSizeLayoutScopeImpl(style.fontSize)
+            return _textAutoSizeLayoutScope!!
+        }
+
     /** The last computed TextLayoutResult, or throws if not initialized. */
     val textLayoutResult: TextLayoutResult
         get() =
@@ -114,19 +131,11 @@ internal class MultiParagraphLayoutCache(
     fun layoutWithConstraints(constraints: Constraints, layoutDirection: LayoutDirection): Boolean {
         val finalConstraints =
             if (minLines > 1) {
-                val localMin =
-                    MinLinesConstrainer.from(
-                            mMinLinesConstrainer,
-                            layoutDirection,
-                            style,
-                            density!!,
-                            fontFamilyResolver
-                        )
-                        .also { mMinLinesConstrainer = it }
-                localMin.coerceMinLines(inConstraints = constraints, minLines = minLines)
+                useMinLinesConstrainer(constraints, layoutDirection)
             } else {
                 constraints
             }
+
         if (!layoutCache.newLayoutWillBeDifferent(finalConstraints, layoutDirection)) {
             if (finalConstraints == layoutCache!!.layoutInput.constraints) return false
             // we need to regen the input, constraints aren't the same
@@ -138,10 +147,66 @@ internal class MultiParagraphLayoutCache(
                 )
             return true
         }
+        if (autoSize != null) {
+            val optimalFontSize = autoSize!!.performAutoSize(finalConstraints, layoutDirection)
+            if (
+                layoutCache != null &&
+                    optimalFontSize == style.fontSize &&
+                    layoutCache!!.layoutInput.overflow == overflow
+            ) {
+                layoutCache =
+                    textLayoutResult(
+                        layoutDirection,
+                        finalConstraints,
+                        layoutCache!!.multiParagraph
+                    )
+                return true
+            }
+            // paragraphIntrinsics now does not match with style and needs to be set to null
+            // otherwise the correct font size will not be used in layout
+            style = style.copy(fontSize = optimalFontSize)
+            markStyleAffectedDirty()
+        }
+
         val multiParagraph = layoutText(finalConstraints, layoutDirection)
 
         layoutCache = textLayoutResult(layoutDirection, finalConstraints, multiParagraph)
         return true
+    }
+
+    private fun useMinLinesConstrainer(
+        constraints: Constraints,
+        layoutDirection: LayoutDirection
+    ): Constraints {
+        val localMin =
+            MinLinesConstrainer.from(
+                    mMinLinesConstrainer,
+                    layoutDirection,
+                    style,
+                    density!!,
+                    fontFamilyResolver
+                )
+                .also { mMinLinesConstrainer = it }
+        return localMin.coerceMinLines(inConstraints = constraints, minLines = minLines)
+    }
+
+    private fun TextAutoSize.performAutoSize(
+        finalConstraints: Constraints,
+        layoutDirection: LayoutDirection
+    ): TextUnit {
+        intrinsicsLayoutDirection = layoutDirection
+        var optimalFontSize = fontSizeSearchScope.getFontSize(finalConstraints, text)
+        if (optimalFontSize.isEm) {
+            val baseFontSize =
+                if (fontSizeSearchScope.initialFontSize.isUnspecified) {
+                    DefaultFontSize
+                } else {
+                    fontSizeSearchScope.initialFontSize
+                }
+            optimalFontSize = baseFontSize * optimalFontSize.value
+        }
+
+        return optimalFontSize
     }
 
     private fun textLayoutResult(
@@ -175,10 +240,18 @@ internal class MultiParagraphLayoutCache(
         val localWidth = cachedIntrinsicHeightInputWidth
         val localHeght = cachedIntrinsicHeight
         if (width == localWidth && localWidth != -1) return localHeght
+        val constraints = Constraints(0, width, 0, Constraints.Infinity)
+        val finalConstraints =
+            if (minLines > 1) {
+                useMinLinesConstrainer(constraints, layoutDirection)
+            } else {
+                constraints
+            }
         val result =
-            layoutText(Constraints(0, width, 0, Constraints.Infinity), layoutDirection)
+            layoutText(finalConstraints, layoutDirection)
                 .height
                 .ceilToIntPx()
+                .coerceAtLeast(finalConstraints.minHeight)
 
         cachedIntrinsicHeightInputWidth = width
         cachedIntrinsicHeight = result
@@ -194,7 +267,8 @@ internal class MultiParagraphLayoutCache(
         softWrap: Boolean,
         maxLines: Int,
         minLines: Int,
-        placeholders: List<AnnotatedString.Range<Placeholder>>?
+        placeholders: List<AnnotatedString.Range<Placeholder>>?,
+        autoSize: TextAutoSize?
     ) {
         this.text = text
         this.style = style
@@ -204,6 +278,7 @@ internal class MultiParagraphLayoutCache(
         this.maxLines = maxLines
         this.minLines = minLines
         this.placeholders = placeholders
+        this.autoSize = autoSize
         markDirty()
     }
 
@@ -244,7 +319,8 @@ internal class MultiParagraphLayoutCache(
      */
     private fun layoutText(
         constraints: Constraints,
-        layoutDirection: LayoutDirection
+        layoutDirection: LayoutDirection,
+        overflow: TextOverflow = this.overflow
     ): MultiParagraph {
         val localParagraphIntrinsics = setLayoutDirection(layoutDirection)
 
@@ -257,9 +333,8 @@ internal class MultiParagraphLayoutCache(
                     overflow,
                     localParagraphIntrinsics.maxIntrinsicWidth
                 ),
-            // This is a fallback behavior for ellipsis. Native
             maxLines = finalMaxLines(softWrap, overflow, maxLines),
-            ellipsis = overflow == TextOverflow.Ellipsis
+            overflow = overflow
         )
     }
 
@@ -295,15 +370,15 @@ internal class MultiParagraphLayoutCache(
         return false
     }
 
-    /**
-     * Compute the maxWidth for text layout from [Constraints]
-     *
-     * Falls back to [paragraphIntrinsics.maxIntrinsicWidth] when not exact constraints.
-     */
-    private fun maxWidth(constraints: Constraints): Int =
-        finalMaxWidth(constraints, softWrap, overflow, paragraphIntrinsics!!.maxIntrinsicWidth)
-
     private fun markDirty() {
+        paragraphIntrinsics = null
+        layoutCache = null
+        cachedIntrinsicHeight = -1
+        cachedIntrinsicHeightInputWidth = -1
+        _textAutoSizeLayoutScope = null
+    }
+
+    private fun markStyleAffectedDirty() {
         paragraphIntrinsics = null
         layoutCache = null
         cachedIntrinsicHeight = -1
@@ -319,4 +394,91 @@ internal class MultiParagraphLayoutCache(
     fun minIntrinsicWidth(layoutDirection: LayoutDirection): Int {
         return setLayoutDirection(layoutDirection).minIntrinsicWidth.ceilToIntPx()
     }
+
+    /** [MultiParagraph] specific implementation of [TextAutoSizeLayoutScope] */
+    private inner class TextAutoSizeLayoutScopeImpl(val initialFontSize: TextUnit) :
+        TextAutoSizeLayoutScope {
+
+        // override Density attributes
+        override val density
+            get() = this@MultiParagraphLayoutCache.density!!.density
+
+        override val fontScale
+            get() = this@MultiParagraphLayoutCache.density!!.fontScale
+
+        override fun performLayout(
+            constraints: Constraints,
+            text: AnnotatedString,
+            fontSize: TextUnit
+        ): TextLayoutResult {
+            val styleBeforeLayout = style
+            // If the cache is populated with a SP [TextUnit] and [performLayout]'s requested
+            // fontSize is in EM, we want to scale the EM value to the SP value.
+            val scaledFontSize = fontSize.scaledToInitialFontSize()
+            if (scaledFontSize != style.fontSize) {
+                style = style.copy(fontSize = scaledFontSize)
+                markStyleAffectedDirty()
+            }
+
+            val layoutConstraints =
+                if (minLines > 1) useMinLinesConstrainer(constraints, intrinsicsLayoutDirection!!)
+                else constraints
+
+            val multiParagraph =
+                layoutText(
+                    layoutConstraints,
+                    intrinsicsLayoutDirection!!,
+                    // We use TextOverflow.Clip for auto size layout as ellipsize won't overflow for
+                    // even the largest font size. The layout pass after will measure with ellipsize
+                    TextOverflow.Clip
+                )
+            layoutCache =
+                textLayoutResult(
+                    intrinsicsLayoutDirection!!,
+                    layoutConstraints,
+                    multiParagraph,
+                )
+            // We're restoring the original style but purposefully not marking the style-affected
+            // caches dirty as this will be done in layoutWithConstraints after auto size if needed.
+            style = styleBeforeLayout
+            return layoutCache!!
+        }
+
+        override fun TextUnit.toPx(): Float {
+            if (isEm) {
+                check(!initialFontSize.isEm) {
+                    "InternalAutoSize -> toPx(): Cannot convert Em to Px when style.fontSize is Em\n" +
+                        "Declare the composable's style.fontSize with Sp units instead."
+                }
+                check(initialFontSize != TextUnit.Unspecified) {
+                    "InternalAutoSize -> toPx(): Cannot convert Em to Px when style.fontSize is " +
+                        "not set. Please specify a font size."
+                }
+                return initialFontSize.toPx() * value
+            }
+            return toDp().toPx()
+        }
+
+        /** Scale [this] text unit to the [initialFontSize]. */
+        private fun TextUnit.scaledToInitialFontSize(): TextUnit {
+            if (isEm) {
+                if (initialFontSize.isEm) {
+                    throw IllegalStateException(
+                        "Cannot convert Em to Px when style.fontSize is" +
+                            " Em ($initialFontSize). Please declare the style.fontSize" +
+                            " with Sp units instead."
+                    )
+                }
+                if (initialFontSize.isUnspecified) {
+                    // hardcoded here as DefaultFontSize is private in SpanStyle
+                    // TODO(b/364858402): Make DefaultFontSize public
+                    return DefaultFontSize
+                }
+                return initialFontSize * value
+            }
+            return this
+        }
+    }
 }
+
+private val DefaultFontSize = 14.sp

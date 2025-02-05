@@ -16,6 +16,7 @@
 
 package androidx.compose.foundation.lazy
 
+import androidx.collection.IntList
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.layout.LazyLayoutKeyIndexMap
 import androidx.compose.foundation.lazy.layout.LazyLayoutMeasureScope
@@ -55,12 +56,19 @@ internal abstract class LazyListMeasuredItemProvider(
         return createItem(index, key, contentType, placeables, constraints)
     }
 
+    fun keepAround(index: Int) {
+        measureScope.measure(index, childConstraints)
+    }
+
     /**
      * Contains the mapping between the key and the index. It could contain not all the items of the
      * list as an optimization.
      */
     val keyIndexMap: LazyLayoutKeyIndexMap
         get() = itemProvider.keyIndexMap
+
+    val headerIndexes: IntList
+        get() = itemProvider.headerIndexes
 
     abstract fun createItem(
         index: Int,

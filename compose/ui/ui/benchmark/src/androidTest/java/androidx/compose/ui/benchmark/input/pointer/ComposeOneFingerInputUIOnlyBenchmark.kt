@@ -85,6 +85,13 @@ class ComposeOneFingerInputUIOnlyBenchmark {
         clickOnItem(0, "0", 6)
     }
 
+    @Test
+    fun clickWith100MovesOnLateItem() {
+        // As items that are laid out last are hit tested first (so z order is respected), item
+        // at 0 will be hit tested late.
+        clickOnItem(0, "0", 100)
+    }
+
     // This test requires less hit testing so changes to dispatch will be tracked more by this test.
     @Test
     fun clickWithMoveOnEarlyItemFyi() {
@@ -94,11 +101,55 @@ class ComposeOneFingerInputUIOnlyBenchmark {
         clickOnItem(lastItem, "$lastItem", 6)
     }
 
-    private fun clickOnItem(item: Int, expectedLabel: String, numberOfMoves: Int) {
+    @Test
+    fun clickWith100MovesOnEarlyItemFyi() {
+        // As items that are laid out last are hit tested first (so z order is respected), item
+        // at NumItems - 1 will be hit tested early.
+        val lastItem = NumItems - 1
+        clickOnItem(lastItem, "$lastItem", 100)
+    }
+
+    @Test
+    fun clickWithMoveAndFlingHistoryOnLateItem() {
+        // As items that are laid out last are hit tested first (so z order is respected), item
+        // at 0 will be hit tested late.
+        clickOnItem(0, "0", 6, true)
+    }
+
+    @Test
+    fun clickWith100MovesAndFlingHistoryOnLateItem() {
+        // As items that are laid out last are hit tested first (so z order is respected), item
+        // at 0 will be hit tested late.
+        clickOnItem(0, "0", 100, true)
+    }
+
+    // This test requires less hit testing so changes to dispatch will be tracked more by this test.
+    @Test
+    fun clickWithMoveAndFlingHistoryOnEarlyItemFyi() {
+        // As items that are laid out last are hit tested first (so z order is respected), item
+        // at NumItems - 1 will be hit tested early.
+        val lastItem = NumItems - 1
+        clickOnItem(lastItem, "$lastItem", 6, true)
+    }
+
+    @Test
+    fun clickWith100MovesAndFlingHistoryOnEarlyItemFyi() {
+        // As items that are laid out last are hit tested first (so z order is respected), item
+        // at NumItems - 1 will be hit tested early.
+        val lastItem = NumItems - 1
+        clickOnItem(lastItem, "$lastItem", 100, true)
+    }
+
+    private fun clickOnItem(
+        item: Int,
+        expectedLabel: String,
+        numberOfMoves: Int,
+        enableHistory: Boolean = false
+    ) {
+        val initialTimeForFirstEvent = 0
+        val initialXForFirstEvent = 0f
         // half height of an item + top of the chosen item = middle of the chosen item
         val y = (ItemHeightPx / 2) + (item * ItemHeightPx)
-        val xDown = 0f
-        val xMoveInitial = xDown + MOVE_AMOUNT_PX
 
         benchmarkRule.runBenchmarkFor({ ComposeTapTestCase() }) {
             lateinit var case: ComposeTapTestCase
@@ -113,37 +164,57 @@ class ComposeOneFingerInputUIOnlyBenchmark {
                 rootView = getHostView()
             }
 
-            // Simple Events
-            val down =
-                MotionEvent(
-                    0,
-                    MotionEvent.ACTION_DOWN,
-                    1,
-                    0,
-                    arrayOf(PointerProperties(0)),
-                    arrayOf(PointerCoords(xDown, y)),
-                    rootView
-                )
-
-            val (time, x, moves) =
-                createMoves(
-                    initialX = xMoveInitial,
-                    initialTime = 100,
+            // Create Events
+            val downs =
+                createDowns(
+                    initialX = initialXForFirstEvent,
+                    initialTime = initialTimeForFirstEvent,
                     y = y,
                     rootView = rootView,
-                    numberOfMoveEvents = numberOfMoves
+                    numberOfEvents = 1,
                 )
 
-            val up =
-                MotionEvent(
-                    time,
-                    MotionEvent.ACTION_UP,
-                    1,
-                    0,
-                    arrayOf(PointerProperties(0)),
-                    arrayOf(PointerCoords(x, y)),
-                    rootView
+            assertThat(downs.size).isEqualTo(1)
+
+            val down = downs.last()
+
+            val initialMoveX = down.x + DefaultPointerInputMoveAmountPx
+            val initialMoveTime = down.eventTime.toInt() + DefaultPointerInputTimeDelta
+
+            val moves =
+                createMoveMotionEvents(
+                    initialTime = initialMoveTime,
+                    initialPointers =
+                        arrayOf(
+                            BenchmarkSimplifiedPointerInputPointer(id = 0, x = initialMoveX, y = y)
+                        ),
+                    rootView = rootView,
+                    numberOfMoveEvents = numberOfMoves,
+                    enableFlingStyleHistory = enableHistory
                 )
+
+            val lastMotionEvent =
+                if (moves.isNotEmpty()) {
+                    moves.last()
+                } else {
+                    down
+                }
+            val upEventTime = lastMotionEvent.eventTime.toInt() + DefaultPointerInputTimeDelta
+            val upEventX = lastMotionEvent.x + DefaultPointerInputMoveAmountPx
+
+            val ups =
+                createUps(
+                    initialTime = upEventTime,
+                    initialPointers =
+                        arrayOf(
+                            BenchmarkSimplifiedPointerInputPointer(id = 0, x = upEventX, y = y)
+                        ),
+                    rootView = rootView
+                )
+
+            assertThat(ups.size).isEqualTo(1)
+
+            val up = ups.last()
 
             benchmarkRule.measureRepeatedOnUiThread {
                 rootView.dispatchTouchEvent(down)
@@ -155,6 +226,7 @@ class ComposeOneFingerInputUIOnlyBenchmark {
                     case.expectedMoveCount++
                     assertThat(case.actualMoveCount).isEqualTo(case.expectedMoveCount)
                 }
+
                 // Double checks move count again (in case there weren't any moves).
                 assertThat(case.actualMoveCount).isEqualTo(case.expectedMoveCount)
 
@@ -165,37 +237,6 @@ class ComposeOneFingerInputUIOnlyBenchmark {
                 assertThat(case.actualOtherEventCount).isEqualTo(case.expectedOtherEventCount)
             }
         }
-    }
-
-    private fun createMoves(
-        initialX: Float,
-        initialTime: Int,
-        y: Float, // Same Y used for all moves
-        rootView: View,
-        numberOfMoveEvents: Int,
-        timeDelta: Int = 100,
-        moveDelta: Float = MOVE_AMOUNT_PX
-    ): Triple<Int, Float, Array<MotionEvent>> {
-        var time = initialTime
-        var x = initialX
-
-        val moveMotionEvents =
-            Array(numberOfMoveEvents) {
-                val move =
-                    MotionEvent(
-                        time,
-                        MotionEvent.ACTION_MOVE,
-                        1,
-                        0,
-                        arrayOf(PointerProperties(0)),
-                        arrayOf(PointerCoords(x, y)),
-                        rootView
-                    )
-                time += timeDelta
-                x += moveDelta
-                move
-            }
-        return Triple(time, x, moveMotionEvents)
     }
 
     private class ComposeTapTestCase : ComposeTestCase {
@@ -258,9 +299,5 @@ class ComposeOneFingerInputUIOnlyBenchmark {
                         .requiredHeight(itemHeightDp!!)
             )
         }
-    }
-
-    companion object {
-        private const val MOVE_AMOUNT_PX = 10f
     }
 }

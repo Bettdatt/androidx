@@ -390,7 +390,7 @@ public fun NavHost(
     navController: NavHostController,
     graph: NavGraph,
     modifier: Modifier = Modifier
-) = NavHost(navController, graph, modifier)
+): Unit = NavHost(navController, graph, modifier)
 
 /**
  * Provides a place in the Compose hierarchy for self contained navigation to occur.
@@ -512,20 +512,29 @@ public fun NavHost(
     var progress by remember { mutableFloatStateOf(0f) }
     var inPredictiveBack by remember { mutableStateOf(false) }
     PredictiveBackHandler(currentBackStack.size > 1) { backEvent ->
-        progress = 0f
-        val currentBackStackEntry = currentBackStack.lastOrNull()
-        composeNavigator.prepareForTransition(currentBackStackEntry!!)
-        val previousEntry = currentBackStack[currentBackStack.size - 2]
-        composeNavigator.prepareForTransition(previousEntry)
+        var currentBackStackEntry: NavBackStackEntry? = null
+        if (currentBackStack.size > 1) {
+            progress = 0f
+            currentBackStackEntry = currentBackStack.lastOrNull()
+            composeNavigator.prepareForTransition(currentBackStackEntry!!)
+            val previousEntry = currentBackStack[currentBackStack.size - 2]
+            composeNavigator.prepareForTransition(previousEntry)
+        }
         try {
             backEvent.collect {
-                inPredictiveBack = true
-                progress = it.progress
+                if (currentBackStack.size > 1) {
+                    inPredictiveBack = true
+                    progress = it.progress
+                }
             }
-            inPredictiveBack = false
-            composeNavigator.popBackStack(currentBackStackEntry, false)
+            if (currentBackStack.size > 1) {
+                inPredictiveBack = false
+                composeNavigator.popBackStack(currentBackStackEntry!!, false)
+            }
         } catch (e: CancellationException) {
-            inPredictiveBack = false
+            if (currentBackStack.size > 1) {
+                inPredictiveBack = false
+            }
         }
     }
 
@@ -678,8 +687,9 @@ public fun NavHost(
             // animating. In these cases the currentEntry will be null, and in those cases,
             // AnimatedContent will just skip attempting to transition the old entry.
             // See https://issuetracker.google.com/238686802
+            val isPredictiveBackCancelAnimation = transitionState.currentState == backStackEntry
             val currentEntry =
-                if (inPredictiveBack) {
+                if (inPredictiveBack || isPredictiveBackCancelAnimation) {
                     // We have to do this because the previous entry does not show up in
                     // visibleEntries
                     // even if we prepare it above as part of onBackStackChangeStarted
@@ -698,7 +708,15 @@ public fun NavHost(
             }
         }
         LaunchedEffect(transition.currentState, transition.targetState) {
-            if (transition.currentState == transition.targetState) {
+            if (
+                transition.currentState == transition.targetState &&
+                    // There is a race condition where previous animation has completed the new
+                    // animation has yet to start and there is a navigate call before this effect.
+                    // We need to make sure we are completing only when the start is settled on the
+                    // actual entry.
+                    (navController.currentBackStackEntry == null ||
+                        transition.targetState == navController.currentBackStackEntry)
+            ) {
                 visibleEntries.forEach { entry -> composeNavigator.onTransitionComplete(entry) }
                 zIndices
                     .filter { it.key != transition.targetState.id }

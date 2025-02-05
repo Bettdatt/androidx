@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -46,6 +47,7 @@ import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performRotaryScrollInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
@@ -59,7 +61,6 @@ import com.google.common.truth.Truth.assertThat
 import kotlin.math.roundToInt
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -985,7 +986,6 @@ public class ScalingLazyColumnTest {
         assert(!focusSet)
     }
 
-    @Ignore("b/347700248 re-enable test after focusable semantics start working again")
     @Test
     fun scalingLazyColumnIsFocusedByDefault_withSemantics() {
         rule.setContent {
@@ -997,6 +997,45 @@ public class ScalingLazyColumnTest {
         }
 
         rule.onNodeWithTag("scalingLazyColumn").assertIsFocused()
+    }
+
+    @Test
+    fun scalingLazyColumn_rotary_enabledScroll() {
+        testScalingLazyColumnRotary(true, 3)
+    }
+
+    @Test
+    fun scalingLazyColumn_noRotary_disabledScroll() {
+        testScalingLazyColumnRotary(false, 1)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    private fun testScalingLazyColumnRotary(
+        userScrollEnabled: Boolean,
+        scrollTarget: Int,
+        scrollItems: Int = 2
+    ) {
+        lateinit var state: ScalingLazyListState
+
+        rule.setContent {
+            state = rememberScalingLazyListState()
+            ScalingLazyColumn(
+                state = state,
+                modifier = Modifier.testTag(scalingLazyColumnTag),
+                userScrollEnabled = userScrollEnabled
+            ) {
+                items(100) {
+                    BasicText(text = "item $it", modifier = Modifier.requiredSize(itemSizeDp))
+                }
+            }
+        }
+        rule.onNodeWithTag(scalingLazyColumnTag).performRotaryScrollInput {
+            // try to scroll by N items
+            rotateToScrollVertically(itemSizePx.toFloat() * scrollItems)
+        }
+        rule.waitForIdle()
+
+        assertThat(state.centerItemIndex).isEqualTo(scrollTarget)
     }
 }
 

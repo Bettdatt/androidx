@@ -38,7 +38,7 @@ class PoolingContainerFragment : BaseFragment() {
 
     override fun handleDrawerStateChange(isDrawerOpen: Boolean) {
         super.handleDrawerStateChange(isDrawerOpen)
-        (recyclerView.adapter as CustomAdapter).zOrderOnTop = !isDrawerOpen && isZOrderOnTop
+        (recyclerView.adapter as CustomAdapter).zOrderOnTop = providerUiOnTop
     }
 
     override fun handleLoadAdFromDrawer(
@@ -104,6 +104,7 @@ class PoolingContainerFragment : BaseFragment() {
                 } catch (e: Exception) {
                     Log.w(TAG, "Ad not loaded $e")
                 }
+                childSandboxedSdkView.setEventListener()
                 sandboxedSdkViewSet.add(childSandboxedSdkView)
             }
         }

@@ -24,9 +24,11 @@ import androidx.annotation.VisibleForTesting
 import androidx.benchmark.Arguments
 import androidx.benchmark.DeviceInfo
 import androidx.benchmark.InstrumentationResults
+import androidx.benchmark.Markdown
 import androidx.benchmark.Outputs
 import androidx.benchmark.Shell
 import androidx.benchmark.UserInfo
+import androidx.benchmark.VirtualFile
 import androidx.tracing.trace
 import java.io.File
 
@@ -45,7 +47,7 @@ fun collect(
     includeInStartupProfile: Boolean,
     filterPredicate: ((String) -> Boolean),
     profileBlock: MacrobenchmarkScope.() -> Unit
-) {
+): BaselineProfileResult {
     val scope = buildMacrobenchmarkScope(packageName)
     val uid = UserInfo.currentUserId
     val startTime = System.nanoTime()
@@ -79,7 +81,9 @@ fun collect(
                 } else {
                     // Don't reset for subsequent iterations
                     Log.d(TAG, "Killing package $packageName")
-                    scope.killProcess()
+                    // Always flush ART profiles before kill for subsequent iterations
+                    // so profiles are not dropped.
+                    scope.killProcessAndFlushArtProfiles()
                     mode.compileImpl(scope) {
                         scope.iteration = iteration
                         Log.d(TAG, "Compile iteration (${scope.iteration}) for $packageName")
@@ -131,7 +135,7 @@ fun collect(
                 sortRules = true,
                 filterPredicate = filterPredicate
             )
-        reportResults(
+        return reportResults(
             profile = profile,
             uniqueFilePrefix = uniqueName,
             startTime = startTime,
@@ -145,11 +149,8 @@ fun collect(
 /** Builds a [MacrobenchmarkScope] instance after checking for the necessary pre-requisites. */
 private fun buildMacrobenchmarkScope(packageName: String): MacrobenchmarkScope {
     Arguments.throwIfError()
-    require(
-        Build.VERSION.SDK_INT >= 33 || (Build.VERSION.SDK_INT >= 28 && Shell.isSessionRooted())
-    ) {
-        "Baseline Profile collection requires API 33+, or a rooted" +
-            " device running API 28 or higher and rooted adb session (via `adb root`)."
+    require(DeviceInfo.supportsBaselineProfileCaptureError == null) {
+        DeviceInfo.supportsBaselineProfileCaptureError!!
     }
     getInstalledPackageInfo(packageName) // throws clearly if not installed
     return MacrobenchmarkScope(packageName, launchWithClearTask = true)
@@ -161,12 +162,9 @@ private fun reportResults(
     uniqueFilePrefix: String,
     startTime: Long,
     includeInStartupProfile: Boolean
-) {
-    // Write a file with a timestamp to be able to disambiguate between runs with the same
-    // unique name.
-
+): BaselineProfileResult {
     val (fileName, tsFileName) =
-        if (includeInStartupProfile && Arguments.enableStartupProfiles) {
+        if (includeInStartupProfile) {
             arrayOf(
                 "$uniqueFilePrefix-startup-prof.txt",
                 "$uniqueFilePrefix-startup-prof-${Outputs.dateToFileName()}.txt"
@@ -185,6 +183,13 @@ private fun reportResults(
             it.writeText(profile)
         }
 
+    val resultsContainer =
+        if (includeInStartupProfile) {
+            BaselineProfileResult(startupProfiles = listOf(tsAbsolutePath))
+        } else {
+            BaselineProfileResult(baselineProfiles = listOf(tsAbsolutePath))
+        }
+
     val totalRunTime = System.nanoTime() - startTime
     val results =
         Summary(
@@ -201,6 +206,7 @@ private fun reportResults(
         )
         Log.d(TAG, "Total Run Time Ns: $totalRunTime")
     }
+    return resultsContainer
 }
 
 /**
@@ -216,8 +222,14 @@ private fun extractProfile(packageName: String): String {
     val expected = "Profile saved to '/data/misc/profman/$packageName-primary.prof.txt'"
 
     // Output of profman was empty in previous version and can be `expected` on newer versions.
-    check(stdout.isBlank() || stdout == expected) {
-        "Expected `pm dump-profiles` stdout to be either black or `$expected` but was $stdout"
+    // Note that it sometimes starts with e.g. :
+    // `Waiting for app processes to flush profiles...\nApp processes flushed profiles in 0ms`
+    check(stdout.isBlank() || stdout.endsWith(expected)) {
+        "Expected `pm dump-profiles` stdout to be either blank or end with `$expected` but was $stdout"
+    }
+
+    if (UserInfo.isAdditionalUser) {
+        return VirtualFile.fromPath("/data/misc/profman/$packageName-primary.prof.txt").readText()
     }
 
     val fileName = "$packageName-primary.prof.txt"
@@ -324,13 +336,12 @@ private fun summaryRecord(record: Summary): String {
     // Links
 
     // Link to a path with timestamp to prevent studio from caching the file
-    val relativePath =
-        Outputs.relativePathFor(record.profileTsPath).replace("(", "\\(").replace(")", "\\)")
+    val relativePath = Outputs.relativePathFor(record.profileTsPath)
 
     summary.append(
         """
             Total run time Ns: ${record.totalRunTime}.
-            Baseline profile [results](file://$relativePath)
+            Baseline profile ${Markdown.createFileLink("results", relativePath)}
         """
             .trimIndent()
     )
@@ -369,4 +380,12 @@ private data class Summary(
     val totalRunTime: Long,
     val profilePath: String,
     val profileTsPath: String,
+)
+
+/** A container for the results of collecting Baseline Profiles using the [collect] API. */
+public class BaselineProfileResult(
+    /** A list of absolute file paths to the generated baseline profiles. */
+    val baselineProfiles: List<String> = emptyList(),
+    /** A list of absolute file paths to the generated startup profiles. */
+    val startupProfiles: List<String> = emptyList()
 )

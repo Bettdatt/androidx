@@ -312,7 +312,7 @@ abstract class PlatformMediaRouter1RouteProvider extends MediaRouteProvider {
 
             UserRouteRecord userRouteRecord = getUserRouteRecord(route);
             if (userRouteRecord != null) {
-                userRouteRecord.mRoute.select();
+                userRouteRecord.mRoute.select(/* syncMediaRoute1Provider= */ false);
             } else {
                 // Select the route if it already exists in the compat media router.
                 // If not, we will select it instead when the route is added.
@@ -382,7 +382,7 @@ abstract class PlatformMediaRouter1RouteProvider extends MediaRouteProvider {
                 if (index >= 0) {
                     SystemRouteRecord record = mSystemRouteRecords.get(index);
                     if (record.mRouteDescriptorId.equals(route.getDescriptorId())) {
-                        route.select();
+                        route.select(/* syncMediaRoute1Provider= */ false);
                     }
                 }
             }

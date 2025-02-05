@@ -29,6 +29,7 @@ import androidx.camera.camera2.pipe.integration.compat.StreamConfigurationMapCom
 import androidx.camera.camera2.pipe.integration.compat.quirk.CameraQuirks
 import androidx.camera.camera2.pipe.integration.compat.workaround.OutputSizesCorrector
 import androidx.camera.camera2.pipe.integration.config.CameraAppComponent
+import androidx.camera.camera2.pipe.integration.config.CameraModule
 import androidx.camera.core.impl.AttachedSurfaceInfo
 import androidx.camera.core.impl.CameraDeviceSurfaceManager
 import androidx.camera.core.impl.StreamSpec
@@ -41,7 +42,7 @@ import androidx.camera.core.impl.UseCaseConfig
  * This class provides Context-specific utility methods for querying and computing supported
  * outputs.
  */
-class CameraSurfaceAdapter(
+public class CameraSurfaceAdapter(
     context: Context,
     cameraComponent: Any?,
     availableCameraIds: Set<String>
@@ -79,7 +80,7 @@ class CameraSurfaceAdapter(
                     SupportedSurfaceCombination(
                         context,
                         cameraMetadata,
-                        EncoderProfilesProviderAdapter(cameraId, cameraQuirks.quirks)
+                        CameraModule.provideEncoderProfilesProvider(cameraId, cameraQuirks)
                     )
             } catch (exception: DoNotDisturbException) {
                 Log.error {

@@ -30,15 +30,15 @@ import androidx.pdf.R
  */
 // TODO(b/344386251): Update the error message and the text view once the mocks are finalised.
 @RestrictTo(RestrictTo.Scope.LIBRARY)
-class LoadingView : LinearLayout {
+public class LoadingView : LinearLayout {
     private var progressBar: ProgressBar
     private var errorMessage: TextView
 
-    constructor(context: Context) : this(context, null)
+    public constructor(context: Context) : this(context, null)
 
-    constructor(context: Context, attrs: AttributeSet) : this(context, attrs, 0)
+    public constructor(context: Context, attrs: AttributeSet) : this(context, attrs, 0)
 
-    constructor(
+    public constructor(
         context: Context,
         attrs: AttributeSet?,
         defStyleAttr: Int = 0
@@ -52,14 +52,22 @@ class LoadingView : LinearLayout {
         errorMessage = findViewById(R.id.errorTextView)
     }
 
-    fun showLoadingView() {
-        progressBar.visibility = VISIBLE
-        errorMessage.visibility = GONE
+    private fun ensureLoadingViewVisibility() {
+        if (this.visibility != VISIBLE) {
+            this.visibility = VISIBLE
+        }
     }
 
-    fun showErrorView(message: String) {
+    public fun showLoadingView() {
+        progressBar.visibility = VISIBLE
+        errorMessage.visibility = GONE
+        ensureLoadingViewVisibility()
+    }
+
+    public fun showErrorView(message: String) {
         progressBar.visibility = GONE
         errorMessage.text = message
         errorMessage.visibility = VISIBLE
+        ensureLoadingViewVisibility()
     }
 }

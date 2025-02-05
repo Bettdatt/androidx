@@ -38,6 +38,8 @@ import androidx.camera.camera2.pipe.core.Threads
 import androidx.camera.camera2.pipe.core.TimeSource
 import androidx.camera.camera2.pipe.internal.CameraBackendsImpl
 import androidx.camera.camera2.pipe.internal.CameraDevicesImpl
+import androidx.camera.camera2.pipe.media.ImageReaderImageSources
+import androidx.camera.camera2.pipe.media.ImageSources
 import dagger.Binds
 import dagger.Component
 import dagger.Module
@@ -52,8 +54,6 @@ import javax.inject.Singleton
 /** Qualifier for requesting the CameraPipe scoped Context object */
 @Qualifier internal annotation class CameraPipeContext
 
-@Qualifier internal annotation class ForGraphLifecycleManager
-
 @Singleton
 @Component(
     modules =
@@ -67,6 +67,8 @@ internal interface CameraPipeComponent {
     fun cameraGraphComponentBuilder(): CameraGraphComponent.Builder
 
     fun cameras(): CameraDevices
+
+    fun cameraBackends(): CameraBackends
 
     fun cameraSurfaceManager(): CameraSurfaceManager
 
@@ -157,6 +159,17 @@ internal abstract class CameraPipeModules {
                     "Available values are ${allBackends.keys}"
             }
             return CameraBackendsImpl(defaultBackendId, allBackends, cameraPipeContext, threads)
+        }
+
+        @Provides
+        fun configureImageSources(
+            imageReaderImageSources: ImageReaderImageSources,
+            cameraPipeConfig: CameraPipe.Config
+        ): ImageSources {
+            if (cameraPipeConfig.imageSources != null) {
+                return cameraPipeConfig.imageSources
+            }
+            return imageReaderImageSources
         }
 
         @Singleton @Provides fun provideCameraSurfaceManager() = CameraSurfaceManager()

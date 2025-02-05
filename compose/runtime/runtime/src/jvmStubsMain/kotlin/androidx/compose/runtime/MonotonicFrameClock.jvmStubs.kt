@@ -14,7 +14,25 @@
  * limitations under the License.
  */
 
+@file:JvmName("ActualAndroid_androidKt")
+@file:JvmMultifileClass
+
 package androidx.compose.runtime
 
+import kotlinx.coroutines.delay
+
+@Deprecated(
+    "MonotonicFrameClocks are not globally applicable across platforms. " +
+        "Use an appropriate local clock."
+)
 actual val DefaultMonotonicFrameClock: MonotonicFrameClock
-    get() = implementedInJetBrainsFork()
+    get() = SixtyFpsMonotonicFrameClock
+
+private object SixtyFpsMonotonicFrameClock : MonotonicFrameClock {
+    private const val fps = 60
+
+    override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
+        delay(1000L / fps)
+        return onFrame(System.nanoTime())
+    }
+}

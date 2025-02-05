@@ -21,7 +21,7 @@
  * Please use that script when creating a new project, rather than copying an existing project and
  * modifying its settings.
  */
-import androidx.build.LibraryType
+import androidx.build.SoftwareType
 
 plugins {
     id("AndroidXPlugin")
@@ -54,7 +54,7 @@ dependencies {
     androidTestImplementation(libs.testRunner)
     androidTestImplementation(libs.testRules)
     androidTestImplementation(libs.truth)
-    androidTestImplementation(libs.espressoCore, excludes.espresso)
+    androidTestImplementation(libs.espressoCore)
     androidTestImplementation(project(":media:version-compat-tests:lib"))
     androidTestImplementation(project(":mediarouter:mediarouter-testing"))
 }
@@ -63,14 +63,15 @@ android {
     buildTypes.configureEach {
         consumerProguardFiles "proguard-rules.pro"
     }
-    namespace "androidx.mediarouter"
+    namespace = "androidx.mediarouter"
 }
 
 androidx {
     name = "MediaRouter"
-    type = LibraryType.PUBLISHED_LIBRARY
+    type = SoftwareType.PUBLISHED_LIBRARY
     inceptionYear = "2013"
     description = "Android MediaRouter Support Library"
     failOnDeprecationWarnings = false
-    metalavaK2UastEnabled = true
+    // TODO: b/326456246
+    optOutJSpecify = true
 }

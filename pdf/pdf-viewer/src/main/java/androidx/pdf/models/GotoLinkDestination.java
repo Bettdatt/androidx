@@ -17,14 +17,17 @@
 package androidx.pdf.models;
 
 import android.annotation.SuppressLint;
+import android.graphics.pdf.content.PdfPageGotoLinkContent;
+import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.os.ext.SdkExtensions;
 
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.annotation.RestrictTo;
+import androidx.core.util.Preconditions;
 
-import com.google.common.base.Preconditions;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Represents the content associated with the destination where a goto link is directing.
@@ -99,8 +102,7 @@ public class GotoLinkDestination implements Parcelable {
      *
      * @return x coordinate of the Destination where the goto link is directing the user.
      */
-    @Nullable
-    public Float getXCoordinate() {
+    public @Nullable Float getXCoordinate() {
         return mXCoordinate;
     }
 
@@ -111,8 +113,7 @@ public class GotoLinkDestination implements Parcelable {
      *
      * @return y coordinate of the Destination where the goto link is directing the user.
      */
-    @Nullable
-    public Float getYCoordinate() {
+    public @Nullable Float getYCoordinate() {
         return mYCoordinate;
     }
 
@@ -139,5 +140,20 @@ public class GotoLinkDestination implements Parcelable {
         parcel.writeFloat(mXCoordinate);
         parcel.writeFloat(mYCoordinate);
         parcel.writeFloat(mZoom);
+    }
+
+    /**
+     * Converts android.graphics.pdf.content.PdfPageGotoLinkContent.Destination object to its
+     * androidx.pdf.aidl.GotoLinkDestination representation.
+     */
+    public static @NonNull GotoLinkDestination convert(
+            PdfPageGotoLinkContent.@NonNull Destination pdfPageGotoLinkContentDest) {
+        if (SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 13) {
+            return new GotoLinkDestination(pdfPageGotoLinkContentDest.getPageNumber(),
+                    pdfPageGotoLinkContentDest.getXCoordinate(),
+                    pdfPageGotoLinkContentDest.getYCoordinate(),
+                    pdfPageGotoLinkContentDest.getZoom());
+        }
+        throw new UnsupportedOperationException("Operation support above S");
     }
 }

@@ -29,7 +29,6 @@ import android.util.TypedValue;
 
 import androidx.annotation.AttrRes;
 import androidx.annotation.DrawableRes;
-import androidx.annotation.NonNull;
 import androidx.annotation.StyleRes;
 import androidx.annotation.StyleableRes;
 import androidx.collection.ArrayMap;
@@ -37,6 +36,8 @@ import androidx.wear.protolayout.renderer.ProtoLayoutTheme;
 import androidx.wear.protolayout.renderer.R;
 
 import com.google.common.collect.ImmutableSet;
+
+import org.jspecify.annotations.NonNull;
 
 import java.util.Map;
 
@@ -82,20 +83,17 @@ public class ProtoLayoutThemeImpl implements ProtoLayoutTheme {
         }
 
         @Override
-        @NonNull
-        public Typeface getNormalFont() {
+        public @NonNull Typeface getNormalFont() {
             return mNormalFont;
         }
 
         @Override
-        @NonNull
-        public Typeface getMediumFont() {
+        public @NonNull Typeface getMediumFont() {
             return mMediumFont;
         }
 
         @Override
-        @NonNull
-        public Typeface getBoldFont() {
+        public @NonNull Typeface getBoldFont() {
             return mBoldFont;
         }
     }
@@ -104,8 +102,7 @@ public class ProtoLayoutThemeImpl implements ProtoLayoutTheme {
      * Creates a ProtoLayoutTheme for the default theme, based on R.style.ProtoLayoutBaseTheme and
      * R.attr.protoLayoutFallbackAppearance from the local package.
      */
-    @NonNull
-    public static ProtoLayoutTheme defaultTheme(@NonNull Context context) {
+    public static @NonNull ProtoLayoutTheme defaultTheme(@NonNull Context context) {
         return new ProtoLayoutThemeImpl(context.getResources(), R.style.ProtoLayoutBaseTheme);
     }
 
@@ -184,8 +181,7 @@ public class ProtoLayoutThemeImpl implements ProtoLayoutTheme {
             ImmutableSet.of(
                     FONT_NAME_DEFAULT,
                     FONT_NAME_ROBOTO,
-                    // TODO(b/348207120): Enable Roboto Flex font.
-                    // FONT_NAME_ROBOTO_FLEX,
+                    FONT_NAME_ROBOTO_FLEX,
                     FONT_NAME_LEGACY_VARIANT_TITLE,
                     FONT_NAME_LEGACY_VARIANT_BODY);
 
@@ -196,17 +192,16 @@ public class ProtoLayoutThemeImpl implements ProtoLayoutTheme {
      * <p>It's theme's responsibility to define which font families are supported by returning the
      * corresponding {@link FontSet}. The default one should be system font and always supported.
      * The Roboto Flex variable font from {@link
-     * androidx.wear.protolayout.LayoutElementBuilders.FontStyle#ROBOTO_FLEX_FONT} and
-     * standard Roboto font from {@link
-     * androidx.wear.protolayout.LayoutElementBuilders.FontStyle#ROBOTO_FONT} should be
-     * supported on renderers supporting versions 1.4 and above.
+     * androidx.wear.protolayout.LayoutElementBuilders.FontStyle#ROBOTO_FLEX_FONT} and standard
+     * Roboto font from {@link
+     * androidx.wear.protolayout.LayoutElementBuilders.FontStyle#ROBOTO_FONT} should be supported on
+     * renderers supporting versions 1.4 and above.
      *
      * @param preferredFontFamilies the prioritized list of String values representing the preferred
      *     font families that should be used.
      */
-    @NonNull
     @Override
-    public FontSet getFontSet(@NonNull String... preferredFontFamilies) {
+    public @NonNull FontSet getFontSet(String @NonNull ... preferredFontFamilies) {
         String acceptedFontFamily =
                 stream(preferredFontFamilies)
                         .filter(SUPPORTED_FONT_FAMILIES::contains)
@@ -219,8 +214,7 @@ public class ProtoLayoutThemeImpl implements ProtoLayoutTheme {
 
     /** Gets an Android Theme object styled with TextAppearance attributes. */
     @Override
-    @NonNull
-    public Theme getTheme() {
+    public @NonNull Theme getTheme() {
         return mTheme;
     }
 

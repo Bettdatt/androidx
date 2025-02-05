@@ -57,8 +57,6 @@ import android.widget.ToggleButton;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.annotation.UiThread;
 import androidx.appcompat.app.AppCompatActivity;
@@ -68,17 +66,18 @@ import androidx.camera.core.Camera;
 import androidx.camera.core.CameraControl;
 import androidx.camera.core.CameraInfo;
 import androidx.camera.core.CameraSelector;
+import androidx.camera.core.CompositionSettings;
 import androidx.camera.core.ConcurrentCamera;
 import androidx.camera.core.ConcurrentCamera.SingleCameraConfig;
 import androidx.camera.core.DynamicRange;
-import androidx.camera.core.ExperimentalCameraInfo;
 import androidx.camera.core.ExperimentalMirrorMode;
 import androidx.camera.core.FocusMeteringAction;
-import androidx.camera.core.LayoutSettings;
 import androidx.camera.core.MeteringPoint;
 import androidx.camera.core.MirrorMode;
 import androidx.camera.core.Preview;
 import androidx.camera.core.UseCaseGroup;
+import androidx.camera.core.resolutionselector.AspectRatioStrategy;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
 import androidx.camera.lifecycle.ExperimentalCameraProviderConfiguration;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.video.ExperimentalPersistentRecording;
@@ -104,6 +103,9 @@ import androidx.test.espresso.idling.CountingIdlingResource;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
+
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -134,21 +136,21 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
     private static final Quality QUALITY_AUTO = null;
     private Quality mVideoQuality;
 
-    @NonNull private PreviewView mSinglePreviewView;
-    @NonNull private PreviewView mFrontPreviewView;
-    @NonNull private PreviewView mBackPreviewView;
-    @NonNull private FrameLayout mFrontPreviewViewForPip;
-    @NonNull private FrameLayout mBackPreviewViewForPip;
-    @NonNull private FrameLayout mFrontPreviewViewForSideBySide;
-    @NonNull private FrameLayout mBackPreviewViewForSideBySide;
-    @NonNull private ToggleButton mModeButton;
-    @NonNull private ToggleButton mLayoutButton;
-    @NonNull private ToggleButton mToggleButton;
-    @NonNull private ToggleButton mDualSelfieButton;
-    @NonNull private ToggleButton mDualRecordButton;
-    @NonNull private LinearLayout mSideBySideLayout;
-    @NonNull private FrameLayout mPiPLayout;
-    @Nullable private ProcessCameraProvider mCameraProvider;
+    private @NonNull PreviewView mSinglePreviewView;
+    private @NonNull PreviewView mFrontPreviewView;
+    private @NonNull PreviewView mBackPreviewView;
+    private @NonNull FrameLayout mFrontPreviewViewForPip;
+    private @NonNull FrameLayout mBackPreviewViewForPip;
+    private @NonNull FrameLayout mFrontPreviewViewForSideBySide;
+    private @NonNull FrameLayout mBackPreviewViewForSideBySide;
+    private @NonNull ToggleButton mModeButton;
+    private @NonNull ToggleButton mLayoutButton;
+    private @NonNull ToggleButton mToggleButton;
+    private @NonNull ToggleButton mDualSelfieButton;
+    private @NonNull ToggleButton mDualRecordButton;
+    private @NonNull LinearLayout mSideBySideLayout;
+    private @NonNull FrameLayout mPiPLayout;
+    private @Nullable ProcessCameraProvider mCameraProvider;
     private boolean mIsConcurrentModeOn = false;
     private boolean mIsLayoutPiP = true;
     private boolean mIsFrontPrimary = true;
@@ -174,7 +176,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
         mDualRecordButton = findViewById(R.id.dual_record);
 
         Recorder recorder = new Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.HD))
+                .setQualitySelector(QualitySelector.from(Quality.FHD))
                 .build();
         mVideoCapture = new VideoCapture.Builder<>(recorder)
                 .setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
@@ -464,7 +466,13 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
                 mFrontPreviewViewForPip.removeAllViews();
                 mFrontPreviewViewForPip.addView(mSinglePreviewView);
                 mBackPreviewViewForPip.setVisibility(GONE);
+
+                ResolutionSelector resolutionSelector = new ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(
+                                AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                        .build();
                 Preview preview = new Preview.Builder()
+                        .setResolutionSelector(resolutionSelector)
                         .build();
                 preview.setSurfaceProvider(mSinglePreviewView.getSurfaceProvider());
                 UseCaseGroup useCaseGroup = new UseCaseGroup.Builder()
@@ -475,23 +483,19 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
                 SingleCameraConfig primary = new SingleCameraConfig(
                         cameraSelectorPrimary,
                         useCaseGroup,
-                        new LayoutSettings.Builder()
+                        new CompositionSettings.Builder()
                                 .setAlpha(1.0f)
-                                .setOffsetX(0.0f)
-                                .setOffsetY(0.0f)
-                                .setWidth(1.0f)
-                                .setHeight(1.0f)
+                                .setOffset(0.0f, 0.0f)
+                                .setScale(1.0f, 1.0f)
                                 .build(),
                         lifecycleOwner);
                 SingleCameraConfig secondary = new SingleCameraConfig(
                         cameraSelectorSecondary,
                         useCaseGroup,
-                        new LayoutSettings.Builder()
+                        new CompositionSettings.Builder()
                                 .setAlpha(1.0f)
-                                .setOffsetX(-0.3f)
-                                .setOffsetY(-0.4f)
-                                .setWidth(0.3f)
-                                .setHeight(0.3f)
+                                .setOffset(-0.3f, -0.4f)
+                                .setScale(0.3f, 0.3f)
                                 .build(),
                         lifecycleOwner);
                 cameraProvider.bindToLifecycle(ImmutableList.of(primary, secondary));
@@ -620,8 +624,8 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
-            @NonNull String[] permissions,
-            @NonNull int[] grantResults) {
+            String @NonNull [] permissions,
+            int @NonNull [] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_CODE_PERMISSIONS) {
             if (allPermissionsGranted()) {
@@ -768,8 +772,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
         }
     };
 
-    @NonNull
-    private static String getQualityIconName(@Nullable Quality quality) {
+    private static @NonNull String getQualityIconName(@Nullable Quality quality) {
         if (quality == QUALITY_AUTO) {
             return "Auto";
         } else if (quality == Quality.UHD) {
@@ -800,8 +803,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
         }
     }
 
-    @Nullable
-    private static Quality itemIdToQuality(int itemId) {
+    private static @Nullable Quality itemIdToQuality(int itemId) {
         switch (itemId) {
             case 0:
                 return QUALITY_AUTO;
@@ -818,8 +820,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
         }
     }
 
-    @NonNull
-    private static String getQualityMenuItemName(@Nullable Quality quality) {
+    private static @NonNull String getQualityMenuItemName(@Nullable Quality quality) {
         if (quality == QUALITY_AUTO) {
             return "Auto";
         } else if (quality == Quality.UHD) {
@@ -835,7 +836,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
     }
 
     @SuppressLint({"MissingPermission", "NullAnnotationGroup"})
-    @OptIn(markerClass = { ExperimentalCameraInfo.class, ExperimentalPersistentRecording.class})
+    @OptIn(markerClass = ExperimentalPersistentRecording.class)
     private void setUpRecordButton() {
         mRecordUi.getButtonRecord().setOnClickListener((view) -> {
             RecordUi.State state = mRecordUi.getState();
@@ -989,7 +990,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
             mNewStateConsumer = onNewState;
         }
 
-        void setState(@NonNull RecordUi.State state) {
+        void setState(RecordUi.@NonNull State state) {
             if (state != mState) {
                 mState = state;
                 updateUi();
@@ -997,8 +998,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
             }
         }
 
-        @NonNull
-        RecordUi.State getState() {
+        RecordUi.@NonNull State getState() {
             return mState;
         }
 
@@ -1070,8 +1070,7 @@ public class ConcurrentCameraActivity extends AppCompatActivity {
             return mTextStats;
         }
 
-        @NonNull
-        Button getButtonQuality() {
+        @NonNull Button getButtonQuality() {
             return mButtonQuality;
         }
 

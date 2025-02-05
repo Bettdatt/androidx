@@ -16,12 +16,20 @@
 
 package androidx.health.connect.client.testing.testdata
 
+import android.health.connect.datatypes.Metadata.RECORDING_METHOD_MANUAL_ENTRY
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HydrationRecord
 import androidx.health.connect.client.records.metadata.DataOrigin
 import androidx.health.connect.client.records.metadata.Metadata
+import androidx.health.connect.client.request.AggregateGroupByDurationRequest
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
+import androidx.health.connect.client.request.AggregateRequest
+import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.testing.FakeHealthConnectClient
+import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.Volume
+import java.time.Duration
+import java.time.Period
 import java.time.ZonedDateTime
 
 // Arbitrary start time in the past
@@ -38,6 +46,7 @@ val runRecord1 =
         exerciseRoute = null,
         metadata =
             Metadata(
+                recordingMethod = RECORDING_METHOD_MANUAL_ENTRY,
                 clientRecordId = "FakeHealthConnectData1",
                 id = "Id1",
                 dataOrigin = DataOrigin(FakeHealthConnectClient.DEFAULT_PACKAGE_NAME)
@@ -50,6 +59,7 @@ val hydrationRecord1 =
         startZoneOffset = startTime.offset,
         endTime = startTime.plusMinutes(4).toInstant(),
         endZoneOffset = startTime.offset,
+        metadata = Metadata(recordingMethod = RECORDING_METHOD_MANUAL_ENTRY),
         volume = Volume.liters(1.0)
     )
 
@@ -65,6 +75,7 @@ val runRecord1Updated =
         exerciseRoute = null,
         metadata =
             Metadata(
+                recordingMethod = RECORDING_METHOD_MANUAL_ENTRY,
                 clientRecordId = "FakeHealthConnectData1",
                 id = "Id1",
                 dataOrigin = DataOrigin(FakeHealthConnectClient.DEFAULT_PACKAGE_NAME)
@@ -94,9 +105,41 @@ fun generateRunningRecords(
             exerciseRoute = null,
             metadata =
                 Metadata(
+                    recordingMethod = RECORDING_METHOD_MANUAL_ENTRY,
                     clientRecordId = "FakeHealthConnectDataRunning$index",
                     dataOrigin = DataOrigin(defaultPackageName)
                 )
         )
     }
 }
+
+/* Test dummies */
+
+val dummyAggregateRequest =
+    AggregateRequest(
+        metrics = emptySet(),
+        timeRangeFilter =
+            TimeRangeFilter(startTime = runRecord1.startTime, endTime = runRecord1.endTime)
+    )
+
+val dummyReadRecordsRequest =
+    ReadRecordsRequest(
+        timeRangeFilter =
+            TimeRangeFilter(startTime = runRecord1.startTime, endTime = runRecord1.endTime),
+        recordType = runRecord1::class
+    )
+
+val dummyAggregateGbpRequest =
+    AggregateGroupByPeriodRequest(
+        metrics = emptySet(),
+        timeRangeFilter = TimeRangeFilter(),
+        timeRangeSlicer = Period.ofDays(1)
+    )
+
+val dummyAggregateGbdRequest =
+    AggregateGroupByDurationRequest(
+        metrics = emptySet(),
+        timeRangeFilter =
+            TimeRangeFilter(startTime = runRecord1.startTime, endTime = runRecord1.endTime),
+        timeRangeSlicer = Duration.ofMillis(98765),
+    )

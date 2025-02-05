@@ -1243,7 +1243,7 @@ class XExecutableElementTest {
         runProcessorTest(sources = listOf(source)) { invocation ->
             val objectMethodNames =
                 invocation.processingEnv
-                    .requireTypeElement(TypeName.OBJECT)
+                    .requireTypeElement(XTypeName.ANY_OBJECT)
                     .getAllNonPrivateInstanceMethods()
                     .map { it.jvmName }
                     .toSet()
@@ -1346,7 +1346,10 @@ class XExecutableElementTest {
 
         val sources = buildSources("app")
         val classpath = compileFiles(buildSources("lib"))
-        runProcessorTest(sources = sources, classpath = classpath) { invocation ->
+        runProcessorTest(
+            sources = sources,
+            classpath = classpath,
+        ) { invocation ->
             // we use this to remove the hash added by the compiler for function names that don't
             // have valid JVM names
             // regex: match 7 characters after -

@@ -18,8 +18,10 @@ package androidx.wear.compose.foundation.samples
 
 import androidx.annotation.Sampled
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -55,6 +57,7 @@ import androidx.wear.compose.foundation.radialGradientBackground
 import androidx.wear.compose.foundation.radialSize
 import androidx.wear.compose.foundation.size
 import androidx.wear.compose.foundation.weight
+import androidx.wear.compose.material.curvedText
 
 @Sampled
 @Composable
@@ -246,6 +249,30 @@ fun CurvedBoxSample() {
     }
 }
 
+@Sampled
+@Composable
+fun CurvedLetterSpacingSample() {
+    val style = CurvedTextStyle(letterSpacing = 0.6.sp, letterSpacingCounterClockwise = 1.4.sp)
+    Box {
+        CurvedLayout(modifier = Modifier.fillMaxSize()) {
+            curvedText(
+                "Clockwise",
+                style = style,
+            )
+        }
+        CurvedLayout(
+            modifier = Modifier.fillMaxSize(),
+            angularDirection = CurvedDirection.Angular.CounterClockwise,
+            anchor = 90f
+        ) {
+            curvedText(
+                "Counter Clockwise",
+                style = style,
+            )
+        }
+    }
+}
+
 @Composable
 fun CurvedFontWeight() {
     CurvedLayout(
@@ -256,6 +283,30 @@ fun CurvedFontWeight() {
                 "W$it",
                 style = CurvedTextStyle(color = Color.White, fontWeight = FontWeight(it)),
                 modifier = CurvedModifier.padding(5.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun CurvedFontHeight() {
+    Box(
+        modifier =
+            Modifier.aspectRatio(1f)
+                .fillMaxSize()
+                .padding(2.dp)
+                .border(2.dp, Color.White, CircleShape)
+    ) {
+        CurvedLayout() {
+            basicCurvedText(
+                "9⎪:⎪0",
+                style = CurvedTextStyle(color = Color.Green, fontSize = 30.sp),
+            )
+        }
+        CurvedLayout(anchor = 90f, angularDirection = CurvedDirection.Angular.CounterClockwise) {
+            basicCurvedText(
+                "9⎪:⎪0",
+                style = CurvedTextStyle(color = Color.Green, fontSize = 30.sp),
             )
         }
     }
